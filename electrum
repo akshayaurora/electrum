@@ -158,10 +158,18 @@ if __name__ == '__main__':
 
     # config is an object passed to the various constructors (wallet, interface, gui)
     if is_android:
+        android_ui = 'android'
+        # test for kivy gui
+        try:
+            import kivy
+            android_ui = 'kivy'
+        except ImportError:
+            pass
+
         config_options = {
             'portable': True,
             'verbose': True,
-            'gui': 'android',
+            'gui': android_ui,
             'auto_cycle': True,
         }
     else:
