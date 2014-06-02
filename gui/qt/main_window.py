@@ -187,10 +187,12 @@ class ElectrumWindow(QMainWindow):
 
     def load_wallet(self, wallet):
         import electrum
+
         self.wallet = wallet
+        self.update_wallet_format()
+
         self.accounts_expanded = self.wallet.storage.get('accounts_expanded',{})
         self.current_account = self.wallet.storage.get("current_account", None)
-
         title = 'Electrum ' + self.wallet.electrum_version + '  -  ' + self.wallet.storage.path
         if self.wallet.is_watching_only(): title += ' [%s]' % (_('watching only'))
         self.setWindowTitle( title )
@@ -211,6 +213,16 @@ class ElectrumWindow(QMainWindow):
         self.update_console()
 
         run_hook('load_wallet', wallet)
+
+
+    def update_wallet_format(self):
+        # convert old-format imported keys
+        if self.wallet.imported_keys:
+            password = self.password_dialog(_("Please enter your password in order to update imported keys"))
+            try:
+                self.wallet.convert_imported_keys(password)
+            except:
+                self.show_message("error")
 
 
     def open_wallet(self):
@@ -816,6 +828,7 @@ class ElectrumWindow(QMainWindow):
 
     @protected
     def send_tx(self, outputs, fee, label, password):
+        self.send_button.setDisabled(True)
 
         # first, create an unsigned tx 
         domain = self.get_payment_sources()
@@ -825,6 +838,7 @@ class ElectrumWindow(QMainWindow):
         except Exception as e:
             traceback.print_exc(file=sys.stdout)
             self.show_message(str(e))
+            self.send_button.setDisabled(False)
             return
 
         # call hook to see if plugin needs gui interaction
@@ -841,9 +855,11 @@ class ElectrumWindow(QMainWindow):
         def sign_done(tx, fee, label):
             if tx.error:
                 self.show_message(tx.error)
+                self.send_button.setDisabled(False)
                 return
             if tx.requires_fee(self.wallet.verifier) and fee < MIN_RELAY_TX_FEE:
                 QMessageBox.warning(self, _('Error'), _("This transaction requires a higher fee, or it will not be propagated by the network."), _('OK'))
+                self.send_button.setDisabled(False)
                 return
             if label:
                 self.wallet.set_label(tx.hash(), label)
@@ -851,11 +867,14 @@ class ElectrumWindow(QMainWindow):
             if not self.gui_object.payment_request:
                 if not tx.is_complete() or self.config.get('show_before_broadcast'):
                     self.show_transaction(tx)
+                    self.do_clear()
+                    self.send_button.setDisabled(False)
                     return
 
             self.broadcast_transaction(tx)
 
-        WaitingDialog(self, 'Signing..').start(sign_thread, sign_done)
+        self.waiting_dialog = WaitingDialog(self, 'Signing..', sign_thread, sign_done)
+        self.waiting_dialog.start()
 
 
 
@@ -876,8 +895,10 @@ class ElectrumWindow(QMainWindow):
                 self.do_clear()
             else:
                 QMessageBox.warning(self, _('Error'), msg, _('OK'))
+            self.send_button.setDisabled(False)
 
-        WaitingDialog(self, 'Broadcasting..').start(broadcast_thread, broadcast_done)
+        self.waiting_dialog = WaitingDialog(self, 'Broadcasting..', broadcast_thread, broadcast_done)
+        self.waiting_dialog.start()
 
 
 
@@ -1482,7 +1503,7 @@ class ElectrumWindow(QMainWindow):
             QMessageBox.warning(self, _('Error'), _('Incorrect Password'), _('OK'))
             return
         from seed_dialog import SeedDialog
-        d = SeedDialog(self, mnemonic, self.wallet.imported_keys)
+        d = SeedDialog(self, mnemonic, self.wallet.has_imported_keys())
         d.exec_()
 
 
@@ -1721,7 +1742,7 @@ class ElectrumWindow(QMainWindow):
     def show_message(self, msg):
         QMessageBox.information(self, _('Message'), msg, _('OK'))
 
-    def password_dialog(self ):
+    def password_dialog(self, msg=None):
         d = QDialog(self)
         d.setModal(1)
         d.setWindowTitle(_("Enter Password"))
@@ -1730,7 +1751,8 @@ class ElectrumWindow(QMainWindow):
         pw.setEchoMode(2)
 
         vbox = QVBoxLayout()
-        msg = _('Please enter your password')
+        if not msg:
+            msg = _('Please enter your password')
         vbox.addWidget(QLabel(msg))
 
         grid = QGridLayout()
@@ -2109,7 +2131,7 @@ class ElectrumWindow(QMainWindow):
 
     @protected
     def do_import_privkey(self, password):
-        if not self.wallet.imported_keys:
+        if not self.wallet.has_imported_keys():
             r = QMessageBox.question(None, _('Warning'), '<b>'+_('Warning') +':\n</b><br/>'+ _('Imported keys are not recoverable from seed.') + ' ' \
                                          + _('If you ever need to restore your wallet from its seed, these keys will be lost.') + '<p>' \
                                          + _('Are you sure you understand what you are doing?'), 3, 4)
