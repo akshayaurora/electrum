@@ -72,7 +72,6 @@ def make_password_dialog(self, wallet, msg):
 
 
 def run_password_dialog(self, wallet, parent):
-    from pudb import set_trace; set_trace()
         
     if wallet and wallet.is_watching_only():
         QMessageBox.information(parent, _('Error'), _('This is a watching-only wallet'), _('OK'))
