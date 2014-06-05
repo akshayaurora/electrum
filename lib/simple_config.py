@@ -158,15 +158,39 @@ a SimpleConfig instance then reads the wallet file.
 
             self.user_config = d
 
+    def storage_available(self):
+        if self.get('gui') != 'kivy':
+            return True
+
+        from kivy.utils import platform
+        if platform != 'android':
+            return True
+
+        from jnius import autoclass
+        from kivy.logger import Logger
+        env  = autoclass('android.os.Environment')
+        if env.getExternalStorageState() == 'mounted':
+            return True
+        Logger.Warning("Electrum: Can't write to disk."
+                       " Media unavailable. Skipping.")
+        return False
+
 
     def save_user_config(self):
         if not self.path: return
 
         path = os.path.join(self.path, "config")
+
+        # check for storage_state
+        #if not self.storage_available():
+        #    return
+
         s = repr(self.user_config)
+
+
         f = open(path,"w")
         f.write( s )
         f.close()
-        if self.get('gui') != 'android':
+        if self.get('gui') not in  ('android', 'kivy'):
             import stat
             os.chmod(path, stat.S_IREAD | stat.S_IWRITE)
