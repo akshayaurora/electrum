@@ -72,7 +72,9 @@ from simple_config import SimpleConfig
 
 class Network(threading.Thread):
 
-    def __init__(self, config = {}):
+    def __init__(self, config=None):
+        if config is None:
+            config = {}  # Do not use mutables as default values!
         threading.Thread.__init__(self)
         self.daemon = True
         self.config = SimpleConfig(config) if type(config) == type({}) else config
@@ -371,8 +373,11 @@ class Network(threading.Thread):
 
     def on_header(self, i, r):
         result = r.get('result')
-        if not result: return
+        if not result:
+            return
         height = result.get('block_height')
+        if not height:
+            return
         self.heights[i.server] = height
         self.merkle_roots[i.server] = result.get('merkle_root')
         self.utxo_roots[i.server] = result.get('utxo_root')
