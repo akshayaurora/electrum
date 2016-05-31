@@ -312,7 +312,7 @@ class ElectrumWindow(App):
             return
         from jnius import autoclass
         from android import activity
-        PythonActivity = autoclass('org.renpy.android.PythonActivity')
+        PythonActivity = autoclass('org.kivy.android.PythonActivity')
         Intent = autoclass('android.content.Intent')
         intent = Intent("com.google.zxing.client.android.SCAN")
         intent.putExtra("SCAN_MODE", "QR_CODE_MODE")
@@ -336,7 +336,7 @@ class ElectrumWindow(App):
             return
         from jnius import autoclass
         from android import activity
-        PythonActivity = autoclass('org.renpy.android.PythonActivity')
+        PythonActivity = autoclass('org.kivy.android.PythonActivity')
         IntentIntegrator = autoclass('com.google.zxing.integration.android.IntentIntegrator')
         integrator = IntentIntegrator(PythonActivity.mActivity)
         def on_qr_result(requestCode, resultCode, intent):
@@ -357,7 +357,7 @@ class ElectrumWindow(App):
         if platform == 'android':
             # move activity to back
             from jnius import autoclass
-            python_act = autoclass('org.renpy.android.PythonActivity')
+            python_act = autoclass('org.kivy.android.PythonActivity')
             mActivity = python_act.mActivity
             mActivity.moveTaskToBack(True)
 
@@ -381,7 +381,7 @@ class ElectrumWindow(App):
         if platform == 'android':
             from android import activity
             from jnius import autoclass
-            PythonActivity = autoclass('org.renpy.android.PythonActivity')
+            PythonActivity = autoclass('org.kivy.android.PythonActivity')
             mactivity = PythonActivity.mActivity
             self.on_new_intent(mactivity.getIntent())
             activity.bind(on_new_intent=self.on_new_intent)

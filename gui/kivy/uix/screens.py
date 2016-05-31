@@ -379,7 +379,7 @@ class ReceiveScreen(CScreen):
         sendIntent.setAction(Intent.ACTION_SEND)
         sendIntent.setType("text/plain")
         sendIntent.putExtra(Intent.EXTRA_TEXT, JS(uri))
-        PythonActivity = autoclass('org.renpy.android.PythonActivity')
+        PythonActivity = autoclass('org.kivy.android.PythonActivity')
         currentActivity = cast('android.app.Activity', PythonActivity.mActivity)
         it = Intent.createChooser(sendIntent, cast('java.lang.CharSequence', JS("Share Bitcoin Request")))
         currentActivity.startActivity(it)
