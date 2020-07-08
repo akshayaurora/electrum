@@ -102,6 +102,10 @@ android.ant_path = /opt/android/apache-ant
 #android.add_jars = foo.jar,bar.jar,path/to/more/*.jar
 #android.add_jars = lib/android/zbar.jar
 
+# (list) Android AAR archives to add (currently works only with sdl2_gradle
+# bootstrap)
+android.add_aars = bin/trezor-lib.aar
+
 # (list) List of Java files to add to the android project (can be java or a
 # directory containing the files)
 android.add_src = electrum/gui/kivy/data/java-classes/

@@ -39,7 +39,17 @@ folder.
     $ ./contrib/make_packages
     ```
 
-5. Build binaries
+5. Build dependent binaries like trezor-lib.aar
+
+   ```
+   $ contrib/android/make trezorlib
+   ```
+
+   This will ask for your root password while running the docker build 
+   trezor-lib.aar will be moved to bin/trezor-lib.aar which is where
+   buildozer.spec expects it to be for next step. 
+
+6. Build binaries
 
     ```
     $ mkdir --parents $PWD/.buildozer/.gradle
@@ -56,7 +66,7 @@ folder.
     and so the modifications will affect it, e.g. `.buildozer` folder
     will be created.
 
-5. The generated binary is in `./bin`.
+7. The generated binary is in `./bin`.
 
 
 
