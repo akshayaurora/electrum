@@ -1,4 +1,3 @@
-
 from functools import partial
 import threading
 import os
@@ -17,9 +16,11 @@ from kivy.core.window import Window
 from kivy.clock import Clock
 from kivy.utils import platform
 
+from electrum import base_wizard
 from electrum.base_wizard import BaseWizard
 from electrum.util import is_valid_email
 
+from electrum.storage import WalletStorage, StorageEncryptionVersion
 
 from . import EventsDialog
 from ...i18n import _
@@ -590,7 +591,7 @@ class WizardDialog(EventsDialog):
         self.app = App.get_running_app()
         self.run_next = kwargs['run_next']
 
-        self._trigger_size_dialog = Clock.create_trigger(self._size_dialog)
+        self._trigger_size_dialog = Clock.create_trigger(self._size_dialog, -1)
         # note: everything bound here needs to be unbound as otherwise the
         # objects will be kept around and keep receiving the callbacks
         Window.bind(size=self._trigger_size_dialog,
@@ -1072,6 +1073,30 @@ class InstallWizard(BaseWizard, Widget):
         """overriden by main_window"""
         pass
 
+    def __init__(self, *args, **kwargs):
+        super(InstallWizard, self).__init__(*args, **kwargs)
+        self.gui_thread = threading.current_thread()
+
+    def run_task_without_blocking_gui(self, task, *, msg=None):
+        assert self.gui_thread == threading.current_thread(), 'must be called from GUI thread'
+        if msg is None:
+            msg = _("Please wait...")
+
+        exc = None  # type: Optional[Exception]
+        res = None
+        def task_wrapper():
+            nonlocal exc
+            nonlocal res
+            try:
+                res = task()
+            except Exception as e:
+                exc = e
+        self.waiting_dialog(task_wrapper, msg=msg)
+        if exc is None:
+            return res
+        else:
+            raise exc
+
     def waiting_dialog(self, task, msg, on_finished=None):
         '''Perform a blocking task in the background by running the passed
         method in a thread.
@@ -1098,6 +1123,14 @@ class InstallWizard(BaseWizard, Widget):
             pos=Window.center, width='200sp', arrow_pos=None, modal=True)
         t = threading.Thread(target = target)
         t.start()
+
+    def choose_hw_device(self,
+                         purpose=base_wizard.HWD_SETUP_NEW_WALLET,
+                         storage: WalletStorage = None):
+        try:
+            self._choose_hw_device(purpose=purpose, storage=storage)
+        except base_wizard.ChooseHwDeviceAgain:
+            pass
 
     def terminate(self, *, storage=None, db=None, aborted=False):
         if storage is None and not aborted:

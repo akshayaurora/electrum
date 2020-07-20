@@ -210,17 +210,13 @@ class BaseWizard(Logger):
                 ('choose_seed_type', _('Create a new seed')),
                 ('restore_from_seed', _('I already have a seed')),
                 ('restore_from_key', _('Use a master key')),
-            ]
-            if not self.is_kivy:
-                choices.append(('choose_hw_device',  _('Use a hardware device')))
+                ('choose_hw_device',  _('Use a hardware device'))]
         else:
             message = _('Add a cosigner to your multi-sig wallet')
             choices = [
                 ('restore_from_key', _('Enter cosigner key')),
                 ('restore_from_seed', _('Enter cosigner seed')),
-            ]
-            if not self.is_kivy:
-                choices.append(('choose_hw_device',  _('Cosign with hardware device')))
+                ('choose_hw_device',  _('Cosign with hardware device'))]
 
         self.choice_dialog(title=title, message=message, choices=choices, run_next=self.run)
 
@@ -337,12 +333,12 @@ class BaseWizard(Logger):
                 msg += _('If your device is not detected on Windows, go to "Settings", "Devices", "Connected devices", '
                          'and do "Remove device". Then, plug your device again.') + '\n'
                 msg += _('While this is less than ideal, it might help if you run Electrum as Administrator.') + '\n'
-            else:
+            elif sys.platform == 'linux':
                 msg += _('On Linux, you might have to add a new permission to your udev rules.') + '\n'
             msg += '\n\n'
             msg += _('Debug message') + '\n' + debug_msg
             self.confirm_dialog(title=title, message=msg,
-                                run_next=lambda x: None)
+                                run_next=lambda *args: self.choose_hw_device(purpose=purpose, storage=storage))
             raise ChooseHwDeviceAgain()
         # select device
         self.devices = devices
