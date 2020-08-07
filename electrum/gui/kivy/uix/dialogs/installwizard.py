@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from kivy.app import App
 from kivy.clock import Clock
 from kivy.lang import Builder
+from kivy.logger import Logger
 from kivy.properties import ObjectProperty, StringProperty, OptionProperty
 from kivy.core.window import Window
 from kivy.uix.button import Button
@@ -16,7 +17,7 @@ from kivy.core.window import Window
 from kivy.clock import Clock
 from kivy.utils import platform
 
-from electrum import base_wizard
+from electrum.base_wizard import (HW_PluginBase, HWD_SETUP_NEW_WALLET, ChooseHwDeviceAgain)
 from electrum.base_wizard import BaseWizard
 from electrum.util import is_valid_email
 
@@ -53,6 +54,9 @@ Builder.load_string('''
     root: None
     size_hint: 1, None
     height: '48sp'
+    text_size: self.size[0] - dp(4), self.size[1] - dp(4)
+    halign: 'center'
+    valign: 'center'
     on_press: if self.root: self.root.dispatch('on_press', self)
     on_release: if self.root: self.root.dispatch('on_release', self)
 
@@ -783,6 +787,9 @@ class WizardChoiceDialog(WizardDialog):
             self._back = _back = partial(app.dispatch, 'on_back')
 
     def get_params(self, button):
+        action = button.action
+        if type(action) == tuple:
+            return button.action
         return (button.action,)
 
 
@@ -1077,37 +1084,29 @@ class InstallWizard(BaseWizard, Widget):
         super(InstallWizard, self).__init__(*args, **kwargs)
         self.gui_thread = threading.current_thread()
 
-    def run_task_without_blocking_gui(self, task, *, msg=None):
+    def run_task_without_blocking_gui(self, task, *, msg=None, 
+                                      on_finished=None, go_back=None):
         assert self.gui_thread == threading.current_thread(), 'must be called from GUI thread'
         if msg is None:
             msg = _("Please wait...")
+        Logger.debug('running task in background: {}'.format(task))
+        self.waiting_dialog(task, msg=msg,
+                            on_finished=on_finished, go_back=go_back)
 
-        exc = None  # type: Optional[Exception]
-        res = None
-        def task_wrapper():
-            nonlocal exc
-            nonlocal res
-            try:
-                res = task()
-            except Exception as e:
-                exc = e
-        self.waiting_dialog(task_wrapper, msg=msg)
-        if exc is None:
-            return res
-        else:
-            raise exc
-
-    def waiting_dialog(self, task, msg, on_finished=None):
+    def waiting_dialog(self, task, msg, on_finished=None, go_back=None):
         '''Perform a blocking task in the background by running the passed
         method in a thread.
         '''
         def target():
             # run your threaded function
+            # Note to self: Remove the exception handling while debugging
+            # and/or pay attention to kivy `debug` logs
             try:
                 task()
             except Exception as err:
-                self.show_error(str(err))
-            # on  completion hide message
+                if str(err): self.show_error(str(err))
+                return Clock.schedule_once(lambda dt: go_back())
+            # on wizard completion hide message
             Clock.schedule_once(lambda dt: app.info_bubble.hide(now=True), -1)
             if on_finished:
                 def protected_on_finished():
@@ -1122,15 +1121,40 @@ class InstallWizard(BaseWizard, Widget):
             text=msg, icon='atlas://electrum/gui/kivy/theming/light/important',
             pos=Window.center, width='200sp', arrow_pos=None, modal=True)
         t = threading.Thread(target = target)
+        t.daemon = False
         t.start()
 
     def choose_hw_device(self,
-                         purpose=base_wizard.HWD_SETUP_NEW_WALLET,
+                         purpose=HWD_SETUP_NEW_WALLET,
                          storage: WalletStorage = None):
         try:
             self._choose_hw_device(purpose=purpose, storage=storage)
-        except base_wizard.ChooseHwDeviceAgain:
+        except ChooseHwDeviceAgain:
             pass
+
+    def on_device(self, name, device_info: 'DeviceInfo', *, purpose, storage: WalletStorage = None):
+        self.plugin = self.plugins.get_plugin(name)
+        assert isinstance(self.plugin, HW_PluginBase)
+        devmgr = self.plugins.device_manager
+        self.plugin.setup_device(device_info, self, purpose, run_next=self.on_hw_client)
+
+    def on_hw_client(self, client, purpose):
+        if purpose == HWD_SETUP_NEW_WALLET:
+            def f(derivation, script_type):
+                derivation = normalize_bip32_derivation(derivation)
+                self.run('on_hw_derivation', name, device_info, derivation, script_type)
+            self.derivation_and_script_type_dialog(f)
+        elif purpose == HWD_SETUP_DECRYPT_WALLET:
+            password = client.get_password_for_storage_encryption()
+            try:
+                storage.decrypt(password)
+            except InvalidPassword:
+                # try to clear session so that user can type another passphrase
+                if hasattr(client, 'clear_session'):  # FIXME not all hw wallet plugins have this
+                    client.clear_session()
+                raise
+        else:
+            raise Exception('unknown purpose: %s' % purpose)
 
     def terminate(self, *, storage=None, db=None, aborted=False):
         if storage is None and not aborted:
@@ -1139,11 +1163,13 @@ class InstallWizard(BaseWizard, Widget):
 
     def choice_dialog(self, **kwargs):
         choices = kwargs['choices']
-        if len(choices) > 1:
-            WizardChoiceDialog(self, **kwargs).open()
-        else:
-            f = kwargs['run_next']
-            f(choices[0][0])
+        # Note: disabling the direct jump to run_next, seems to cause user to
+        # loop back to matrix dialog if `back` button is pressed.
+        #if len(choices) > 1:
+        WizardChoiceDialog(self, **kwargs).open()
+        #else:
+            #f = kwargs['run_next']
+            #f(*choices[0][0])
 
     def multisig_dialog(self, **kwargs): WizardMultisigDialog(self, **kwargs).open()
     def show_seed_dialog(self, **kwargs): ShowSeedDialog(self, **kwargs).open()

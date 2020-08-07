@@ -4,8 +4,28 @@ These are used to interact with the Trezor dialog for entry
 of the pin.
 '''
 
-from electrum_gui.kivy.uix.dialogs.installwizard import WizardDialog
+from electrum.gui.kivy.uix.dialogs.installwizard import WizardDialog
+
 from kivy.lang import Builder
+from kivy.uix.button import Button
+from kivy.properties import StringProperty
+
+
+class MatrixButton(Button):
+    ''' Button used to display pin matrix
+    ? ? ?
+    ? ? ?
+    ? ? ?
+    '''
+    Builder.load_string('''
+<MatrixButton>
+    text: '?'
+    on_release:
+        ti_pass = self.parent.dialog.ids.ti_pass;\
+        ti_pass.text += str(self._intval);\
+        ti_pass.focus = True
+''')
+
 
 class PinMatrixDialog(WizardDialog):
     '''
@@ -15,39 +35,20 @@ class PinMatrixDialog(WizardDialog):
 
         show_strength=True may be useful for entering new PIN
     '''
-
-    def __init__(self, **kwargs):
-        Builder.load_string('''
-<MatrixButton@Button>
-    text: '?'
-
+    Builder.load_string('''
 <PinMatrixDialog>
     value: 'next'
     spacing: dp(9)
     Label:
-        text: 'Enter your current TREZOR PIN'
+        text: root.msg
         size_hint: 1, None
         height: dp(56)
     GridLayout
+        id: container
         cols: 3
-        MatrixButton
-            on_release: ti_pass.text += '7'; ti_pass.focus = True
-        MatrixButton
-            on_release: ti_pass.text += '8'; ti_pass.focus = True
-        MatrixButton
-            on_release: ti_pass.text += '7'; ti_pass.focus = True
-        MatrixButton
-            on_release: ti_pass.text += '4'; ti_pass.focus = True
-        MatrixButton
-            on_release: ti_pass.text += '5'; ti_pass.focus = True
-        MatrixButton
-            on_release: ti_pass.text += '6'; ti_pass.focus = True
-        MatrixButton
-            on_release: ti_pass.text += '1'; ti_pass.focus = True
-        MatrixButton
-            on_release: ti_pass.text += '2'; ti_pass.focus = True
-        MatrixButton
-            on_release: ti_pass.text += '3'; ti_pass.focus = True
+        rows: 3
+        spacing: dp(5)
+        dialog: root
     BoxLayout
         size_hint: 1, None
         height: dp(56)
@@ -56,12 +57,12 @@ class PinMatrixDialog(WizardDialog):
             focus: True
             foreground_color: 1, 1, 1, 1
             password: True
-            #password_mask:'ø'
+            password_mask:'ø'
             input_filter: 'int'
             padding: dp(9), dp(18), dp(9), dp(3)
             background_color: (1, 1, 1, 1)  if self.focused else (55/255., 147/255., 227/255., 1)
             background_normal: self.background_active
-            background_active: 'atlas://gui/kivy/theming/light/textinput_active'
+            background_active: 'atlas://electrum/gui/kivy/theming/light/textinput_active'
             on_text:
                 import math
                 digits = len(set(str(self.text)))
@@ -73,14 +74,31 @@ class PinMatrixDialog(WizardDialog):
             color: {'Weak': (1, 0, 0, 1), 'Fine': (1, 1, 1, 1), 'Strong': (0, 1, 0, 1), 'Ultimate': (0, 0, 1, 1)}[self.text] if self.text else (1, 1, 1, 1)
             text: 'Weak'
 ''')
-        super(PinMatrixDialog, self).__init__(self, **kwargs)
 
+    msg = StringProperty('')
+    '''Message to be displayed on top of dialog
+    '''
+
+    def __init__(self, **kwargs):
+        self.msg = kwargs.get('msg', None)
+        super(PinMatrixDialog, self).__init__(self, **kwargs)
+        container = self.ids.container
+
+        if container.children:
+            #pupulate only once.
+            return
+
+        for x in range(3)[::-1]:
+            for y in range(3):
+                m = MatrixButton()
+                m._intval = x + y * 3 + 1
+                container.add_widget(m)
+
+    def get_params(self, button):
+        return (self.ids.ti_pass.text,)
 
     def can_go_back(self):
         return True
 
     def go_back(self):
-        # do nothing when going back
-        # dialog is alredy closed, just return
-        print 'TODO go before pin dialog'
-        return
+        self.run_next(None)

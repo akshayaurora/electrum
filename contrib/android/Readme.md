@@ -116,6 +116,14 @@ Build atlas: `(cd contrib/android/; make theming)`
 
 Run electrum with the `-g` switch: `electrum -g kivy`
 
+To emulate mobile screen using kivy edit `~/.kivy/config.ini` and make sure it
+has a `modules` section like so.
+
+    [modules]
+    screen=onex,portrait,scale=.5
+
+To get debug log from kivy you should set, `log_level` to `debug` in the config.
+
 ### debug vs release build
 If you just follow the instructions above, you will build the apk
 in debug mode. The most notable difference is that the apk will be

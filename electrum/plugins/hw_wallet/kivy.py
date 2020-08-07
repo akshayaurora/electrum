@@ -76,128 +76,127 @@ class KivyHandlerBase(HardwareHandlerBase, Logger):
         self.dialog = None
         self.done = threading.Event()
 
-    #def update_status(self, paired):
-        #self.status_signal.emit(paired)
+    def update_status(self, paired):
+        self.status_signal.emit(paired)
 
-    #def _update_status(self, paired):
-        #if hasattr(self, 'button'):
-            #button = self.button
-            #icon_name = button.icon_paired if paired else button.icon_unpaired
-            #button.setIcon(read_QIcon(icon_name))
+    def _update_status(self, paired):
+        if hasattr(self, 'button'):
+            button = self.button
+            icon_name = button.icon_paired if paired else button.icon_unpaired
+            button.setIcon(read_QIcon(icon_name))
 
-    #def query_choice(self, msg, labels):
-        #self.done.clear()
-        #self.query_signal.emit(msg, labels)
-        #self.done.wait()
-        #return self.choice
+    def query_choice(self, msg, labels):
+        self.done.clear()
+        self.query_signal.emit(msg, labels)
+        self.done.wait()
+        return self.choice
 
-    #def yes_no_question(self, msg):
-        #self.done.clear()
-        #self.yes_no_signal.emit(msg)
-        #self.done.wait()
-        #return self.ok
+    def yes_no_question(self, msg):
+        self.done.clear()
+        self.yes_no_signal.emit(msg)
+        self.done.wait()
+        return self.ok
 
-    #def show_message(self, msg, on_cancel=None):
-        #self.message_signal.emit(msg, on_cancel)
+    def show_message(self, msg, on_cancel=None):
+        self.message_signal.emit(msg, on_cancel)
 
-    #def show_error(self, msg, blocking=False):
-        #self.done.clear()
-        #self.error_signal.emit(msg, blocking)
-        #if blocking:
-            #self.done.wait()
+    def show_error(self, msg, blocking=False):
+        self.done.clear()
+        self.error_signal.emit(msg, blocking)
+        if blocking:
+            self.done.wait()
 
-    #def finished(self):
-        #self.clear_signal.emit()
+    def finished(self):
+        self.clear_dialog()
 
-    #def get_word(self, msg):
-        #self.done.clear()
-        #self.word_signal.emit(msg)
-        #self.done.wait()
-        #return self.word
+    def get_word(self, msg):
+        self.done.clear()
+        self.word_signal.emit(msg)
+        self.done.wait()
+        return self.word
 
-    #def get_passphrase(self, msg, confirm):
-        #self.done.clear()
-        #self.passphrase_signal.emit(msg, confirm)
-        #self.done.wait()
-        #return self.passphrase
+    def get_passphrase(self, msg, confirm):
+        self.done.clear()
+        self.passphrase_signal.emit(msg, confirm)
+        self.done.wait()
+        return self.passphrase
 
     def passphrase_dialog(self, msg, confirm):
-        pass
         #If confirm is true, require the user to enter the passphrase twice
-        #parent = self.top_level_window()
-        #d = WindowModalDialog(parent, _("Enter Passphrase"))
-        #if confirm:
-            #OK_button = OkButton(d)
-            #playout = PasswordLayout(msg=msg, kind=PW_PASSPHRASE, OK_button=OK_button)
-            #vbox = QVBoxLayout()
-            #vbox.addLayout(playout.layout())
-            #vbox.addLayout(Buttons(CancelButton(d), OK_button))
-            #d.setLayout(vbox)
-            #passphrase = playout.new_password() if d.exec_() else None
-        #else:
-            #pw = PasswordLineEdit()
-            #pw.setMinimumWidth(200)
-            #vbox = QVBoxLayout()
-            #vbox.addWidget(WWLabel(msg))
-            #vbox.addWidget(pw)
-            #vbox.addLayout(Buttons(CancelButton(d), OkButton(d)))
-            #d.setLayout(vbox)
-            #passphrase = pw.text() if d.exec_() else None
-        #self.passphrase = passphrase
-        #self.done.set()
+        parent = self.top_level_window()
+        d = WindowModalDialog(parent, _("Enter Passphrase"))
+        if confirm:
+            OK_button = OkButton(d)
+            playout = PasswordLayout(msg=msg, kind=PW_PASSPHRASE, OK_button=OK_button)
+            vbox = QVBoxLayout()
+            vbox.addLayout(playout.layout())
+            vbox.addLayout(Buttons(CancelButton(d), OK_button))
+            d.setLayout(vbox)
+            passphrase = playout.new_password() if d.exec_() else None
+        else:
+            pw = PasswordLineEdit()
+            pw.setMinimumWidth(200)
+            vbox = QVBoxLayout()
+            vbox.addWidget(WWLabel(msg))
+            vbox.addWidget(pw)
+            vbox.addLayout(Buttons(CancelButton(d), OkButton(d)))
+            d.setLayout(vbox)
+            passphrase = pw.text() if d.exec_() else None
+        self.passphrase = passphrase
+        self.done.set()
 
-    #def word_dialog(self, msg):
-        #dialog = WindowModalDialog(self.top_level_window(), "")
-        #hbox = QHBoxLayout(dialog)
-        #hbox.addWidget(QLabel(msg))
-        #text = QLineEdit()
-        #text.setMaximumWidth(12 * char_width_in_lineedit())
-        #text.returnPressed.connect(dialog.accept)
-        #hbox.addWidget(text)
-        #hbox.addStretch(1)
-        #dialog.exec_()  # Firmware cannot handle cancellation
-        #self.word = text.text()
-        #self.done.set()
+    def word_dialog(self, msg):
+        dialog = WindowModalDialog(self.top_level_window(), "")
+        hbox = QHBoxLayout(dialog)
+        hbox.addWidget(QLabel(msg))
+        text = QLineEdit()
+        text.setMaximumWidth(12 * char_width_in_lineedit())
+        text.returnPressed.connect(dialog.accept)
+        hbox.addWidget(text)
+        hbox.addStretch(1)
+        dialog.exec_()  # Firmware cannot handle cancellation
+        self.word = text.text()
+        self.done.set()
 
-    #def message_dialog(self, msg, on_cancel):
+    def message_dialog(self, msg, on_cancel):
         #Called more than once during signing, to confirm output and fee
-        #self.clear_dialog()
-        #title = _('Please check your {} device').format(self.device)
-        #self.dialog = dialog = WindowModalDialog(self.top_level_window(), title)
-        #l = QLabel(msg)
-        #vbox = QVBoxLayout(dialog)
-        #vbox.addWidget(l)
-        #if on_cancel:
-            #dialog.rejected.connect(on_cancel)
-            #vbox.addLayout(Buttons(CancelButton(dialog)))
-        #dialog.show()
+        self.clear_dialog()
+        title = _('Please check your {} device').format(self.device)
+        self.dialog = dialog = WindowModalDialog(self.top_level_window(), title)
+        l = QLabel(msg)
+        vbox = QVBoxLayout(dialog)
+        vbox.addWidget(l)
+        if on_cancel:
+            dialog.rejected.connect(on_cancel)
+            vbox.addLayout(Buttons(CancelButton(dialog)))
+        dialog.show()
 
-    #def error_dialog(self, msg, blocking):
-        #self.win.show_error(msg, parent=self.top_level_window())
-        #if blocking:
-            #self.done.set()
+    def error_dialog(self, msg, blocking):
+        self.win.show_error(msg, parent=self.top_level_window())
+        if blocking:
+            self.done.set()
 
-    #def clear_dialog(self):
-        #if self.dialog:
-            #self.dialog.accept()
-            #self.dialog = None
+    def clear_dialog(self):
+        if self.dialog:
+            self.dialog.dismiss()
+            self.dialog = None
 
-    #def win_query_choice(self, msg, labels):
-        #try:
-            #self.choice = self.win.query_choice(msg, labels)
-        #except UserCancelled:
-            #self.choice = None
-        #self.done.set()
+    def win_query_choice(self, msg, labels):
+        try:
+            self.choice = self.win.query_choice(msg, labels)
+        except UserCancelled:
+            self.choice = None
+        self.done.set()
 
-    #def win_yes_no_question(self, msg):
-        #self.ok = self.win.question(msg)
-        #self.done.set()
+    def win_yes_no_question(self, msg):
+        self.ok = self.win.question(msg)
+        self.done.set()
 
 
 class KivyPluginBase(object):
 
     @hook
-    def load_wallet(self: Union['QtPluginBase', HW_PluginBase], wallet: 'Abstract_Wallet', window: ElectrumWindow):
+    def load_wallet(self: Union['KivyPluginBase', HW_PluginBase], wallet: 'Abstract_Wallet', window: ElectrumWindow):
         relevant_keystores = [keystore for keystore in wallet.get_keystores()
                               if isinstance(keystore, self.keystore_class)]
         if not relevant_keystores:
@@ -244,35 +243,35 @@ class KivyPluginBase(object):
         some_keystore = relevant_keystores[0]
         some_keystore.thread.add(trigger_pairings)
 
-    #def _on_status_bar_button_click(self, *, window: ElectrumWindow, keystore: 'Hardware_KeyStore'):
-        #try:
-            #self.show_settings_dialog(window=window, keystore=keystore)
-        #except (UserFacingException, UserCancelled) as e:
-            #exc_info = (type(e), e, e.__traceback__)
-            #self.on_task_thread_error(window=window, keystore=keystore, exc_info=exc_info)
+    def _on_status_bar_button_click(self, *, window: ElectrumWindow, keystore: 'Hardware_KeyStore'):
+        try:
+            self.show_settings_dialog(window=window, keystore=keystore)
+        except (UserFacingException, UserCancelled) as e:
+            exc_info = (type(e), e, e.__traceback__)
+            self.on_task_thread_error(window=window, keystore=keystore, exc_info=exc_info)
 
-    #def on_task_thread_error(self: Union['QtPluginBase', HW_PluginBase], window: ElectrumWindow,
-                             #keystore: 'Hardware_KeyStore', exc_info):
-        #e = exc_info[1]
-        #if isinstance(e, OutdatedHwFirmwareException):
-            #if window.question(e.text_ignore_old_fw_and_continue(), title=_("Outdated device firmware")):
-                #self.set_ignore_outdated_fw()
-                #will need to re-pair
-                #devmgr = self.device_manager()
-                #def re_pair_device():
-                    #device_id = self.choose_device(window, keystore)
-                    #devmgr.unpair_id(device_id)
-                    #self.get_client(keystore)
-                #keystore.thread.add(re_pair_device)
-            #return
-        #else:
-            #window.on_error(exc_info)
+    def on_task_thread_error(self: Union['KivyPluginBase', HW_PluginBase], window: ElectrumWindow,
+                             keystore: 'Hardware_KeyStore', exc_info):
+        e = exc_info[1]
+        if isinstance(e, OutdatedHwFirmwareException):
+            if window.question(e.text_ignore_old_fw_and_continue(), title=_("Outdated device firmware")):
+                self.set_ignore_outdated_fw()
+                # will need to re-pair
+                devmgr = self.device_manager()
+                def re_pair_device():
+                    device_id = self.choose_device(window, keystore)
+                    devmgr.unpair_id(device_id)
+                    self.get_client(keystore)
+                keystore.thread.add(re_pair_device)
+            return
+        else:
+            window.on_error(exc_info)
 
-    def choose_device(self: Union['QtPluginBase', HW_PluginBase], window: ElectrumWindow,
+    def choose_device(self: Union['KivyPluginBase', HW_PluginBase], window: ElectrumWindow,
                       keystore: 'Hardware_KeyStore') -> Optional[str]:
         '''This dialog box should be usable even if the user has
         forgotten their PIN or it is in bootloader mode.'''
-        assert window.gui_thread != threading.current_thread(), 'must not be called from GUI thread'
+        assert window.gui_thread == threading.current_thread(), 'must not be called from GUI thread'
         device_id = self.device_manager().xpub_id(keystore.xpub)
         if not device_id:
             try:
@@ -282,23 +281,23 @@ class KivyPluginBase(object):
             device_id = info.device.id_
         return device_id
 
-    #def show_settings_dialog(self, window: ElectrumWindow, keystore: 'Hardware_KeyStore') -> None:
-        #default implementation (if no dialog): just try to connect to device
-        #def connect():
-            #device_id = self.choose_device(window, keystore)
-        #keystore.thread.add(connect)
+    def show_settings_dialog(self, window: ElectrumWindow, keystore: 'Hardware_KeyStore') -> None:
+        # default implementation (if no dialog): just try to connect to device
+        def connect():
+            device_id = self.choose_device(window, keystore)
+        keystore.thread.add(connect)
 
-    #def add_show_address_on_hw_device_button_for_receive_addr(self, wallet: 'Abstract_Wallet',
-                                                              #keystore: 'Hardware_KeyStore',
-                                                              #main_window: ElectrumWindow):
-        #plugin = keystore.plugin
-        #receive_address_e = main_window.receive_address_e
+    def add_show_address_on_hw_device_button_for_receive_addr(self, wallet: 'Abstract_Wallet',
+                                                              keystore: 'Hardware_KeyStore',
+                                                              main_window: ElectrumWindow):
+        plugin = keystore.plugin
+        receive_address_e = main_window.receive_address_e
 
-        #def show_address():
-            #addr = str(receive_address_e.text())
-            #keystore.thread.add(partial(plugin.show_address, wallet, addr, keystore))
-        #dev_name = f"{plugin.device} ({keystore.label})"
-        #receive_address_e.addButton("eye1.png", show_address, _("Show on {}").format(dev_name))
+        def show_address():
+            addr = str(receive_address_e.text())
+            keystore.thread.add(partial(plugin.show_address, wallet, addr, keystore))
+        dev_name = f"{plugin.device} ({keystore.label})"
+        receive_address_e.addButton("eye1.png", show_address, _("Show on {}").format(dev_name))
 
     def create_handler(self, window: Union[ElectrumWindow, InstallWizard]) -> 'KivyHandlerBase':
         raise NotImplementedError()

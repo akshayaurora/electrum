@@ -140,6 +140,7 @@ class InfoBubble(Factory.Bubble):
     def show(self, pos, duration, width=None, modal=False, exit=False):
         '''Animate the bubble into position'''
         self.modal, self.exit = modal, exit
+        self.hide(now=True)
         if width:
             self.width = width
         if self.modal:
@@ -179,6 +180,9 @@ class InfoBubble(Factory.Bubble):
         '''
         def on_stop(*l):
             if self.modal:
+                # check if trying to remove non existent bubble
+                if not hasattr(self, '_modal_view'): return
+                # bubble exists, now remove it
                 m = self._modal_view
                 m.remove_widget(self)
                 Window.remove_widget(m)

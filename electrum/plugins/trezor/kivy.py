@@ -3,13 +3,18 @@ import threading
 
 from electrum.i18n import _
 from electrum.plugin import hook
-from electrum.util import bh2u
+from electrum.util import bh2u, UserFacingException
+from electrum.base_wizard import (HWD_SETUP_NEW_WALLET, ChooseHwDeviceAgain,
+    UserFacingException, UserCancelled, GoBack, OutdatedHwFirmwareException)
 
 from ..hw_wallet.kivy import KivyHandlerBase, KivyPluginBase
 from ..hw_wallet.plugin import only_hook_if_libraries_available
 from .trezor import (TrezorPlugin, TIM_NEW, TIM_RECOVER, TrezorInitSettings,
                      PASSPHRASE_ON_DEVICE, Capability, BackupType, RecoveryDeviceType)
 
+
+from kivy.properties import ObjectProperty
+from kivy.clock import Clock
 
 PASSPHRASE_HELP_SHORT =_(
     "Passphrases allow you to access new wallets, each "
@@ -19,9 +24,6 @@ PASSPHRASE_HELP = PASSPHRASE_HELP_SHORT + "  " + _(
     "you use as they each generate different addresses.  Changing "
     "your passphrase does not lose other wallets, each is still "
     "accessible behind its own passphrase.")
-RECOMMEND_PIN = _(
-    "You should enable PIN protection.  Your PIN is the only protection "
-    "for your bitcoins if your device is lost or stolen.")
 PASSPHRASE_NOT_PIN = _(
     "If you forget a passphrase you will be unable to access any "
     "bitcoins in the wallet behind it.  A passphrase is not a PIN. "
@@ -30,82 +32,15 @@ MATRIX_RECOVERY = _(
     "Enter the recovery words by pressing the buttons according to what "
     "the device shows on its display.  You can also use your NUMPAD.\n"
     "Press BACKSPACE to go back a choice or word.\n")
-SEEDLESS_MODE_WARNING = _(
-    "In seedless mode, the mnemonic seed words are never shown to the user.\n"
-    "There is no backup, and the user has a proof of this.\n"
-    "This is an advanced feature, only suggested to be used in redundant multisig setups.")
-
-
-#class MatrixDialog():
-
-    #def __init__(self, parent):
-        #super(MatrixDialog, self).__init__(parent)
-        #self.setWindowTitle(_("Trezor Matrix Recovery"))
-        #self.num = 9
-        #self.loop = QEventLoop()
-
-        #vbox = QVBoxLayout(self)
-        #vbox.addWidget(WWLabel(MATRIX_RECOVERY))
-
-        #grid = QGridLayout()
-        #grid.setSpacing(0)
-        #self.char_buttons = []
-        #for y in range(3):
-            #for x in range(3):
-                #button = QPushButton('?')
-                #button.clicked.connect(partial(self.process_key, ord('1') + y * 3 + x))
-                #grid.addWidget(button, 3 - y, x)
-                #self.char_buttons.append(button)
-        #vbox.addLayout(grid)
-
-        #self.backspace_button = QPushButton("<=")
-        #self.backspace_button.clicked.connect(partial(self.process_key, Qt.Key_Backspace))
-        #self.cancel_button = QPushButton(_("Cancel"))
-        #self.cancel_button.clicked.connect(partial(self.process_key, Qt.Key_Escape))
-        #buttons = Buttons(self.backspace_button, self.cancel_button)
-        #vbox.addSpacing(40)
-        #vbox.addLayout(buttons)
-        #self.refresh()
-        #self.show()
-
-    #def refresh(self):
-        #for y in range(3):
-            #self.char_buttons[3 * y + 1].setEnabled(self.num == 9)
-
-    #def is_valid(self, key):
-        #return key >= ord('1') and key <= ord('9')
-
-    #def process_key(self, key):
-        #self.data = None
-        #if key == Qt.Key_Backspace:
-            #self.data = '\010'
-        #elif key == Qt.Key_Escape:
-            #self.data = 'x'
-        #elif self.is_valid(key):
-            #self.char_buttons[key - ord('1')].setFocus()
-            #self.data = '%c' % key
-        #if self.data:
-            #self.loop.exit(0)
-
-    #def keyPressEvent(self, event):
-        #self.process_key(event.key())
-        #if not self.data:
-            #QDialog.keyPressEvent(self, event)
-
-    #def get_matrix(self, num):
-        #self.num = num
-        #self.refresh()
-        #self.loop.exec_()
 
 
 class KivyHandler(KivyHandlerBase):
+    '''
+    '''
 
-    #pin_signal = pyqtSignal(object, object)
-    #matrix_signal = pyqtSignal(object)
-    #close_matrix_dialog_signal = pyqtSignal()
-
-    def __init__(self, win, pin_matrix_widget_class, device):
+    def __init__(self, win, pin_matrix_dialog, device):
         super(KivyHandler, self).__init__(win, device)
+        self.pin_matrix_dialog = pin_matrix_dialog
         #self.pin_signal.connect(self.pin_dialog)
         #self.matrix_signal.connect(self.matrix_recovery_dialog)
         #self.close_matrix_dialog_signal.connect(self._close_matrix_dialog)
@@ -113,112 +48,108 @@ class KivyHandler(KivyHandlerBase):
         #self.matrix_dialog = None
         #self.passphrase_on_device = False
 
-    #def get_pin(self, msg, *, show_strength=True):
-        #self.done.clear()
-        #self.pin_signal.emit(msg, show_strength)
-        #self.done.wait()
-        #return self.response
+    def get_pin(self, msg, *, show_strength=True):
+        self.done.clear()
+        self.pin_dialog(msg, show_strength)
+        self.done.wait()
+        return self.response
 
-    #def get_matrix(self, msg):
-        #self.done.clear()
-        #self.matrix_signal.emit(msg)
-        #self.done.wait()
-        #data = self.matrix_dialog.data
-        #if data == 'x':
-            #self.close_matrix_dialog()
-        #return data
+    def get_matrix(self, msg):
+        self.done.clear()
+        self.matrix_signal.emit(msg)
+        self.done.wait()
+        data = self.matrix_dialog.data
+        if data == 'x':
+            self.close_matrix_dialog()
+        return data
 
-    #def _close_matrix_dialog(self):
-        #if self.matrix_dialog:
-            #self.matrix_dialog.accept()
-            #self.matrix_dialog = None
+    def close_matrix_dialog(self):
+        self.clear_dialog()
 
-    #def close_matrix_dialog(self):
-        #self.close_matrix_dialog_signal.emit()
+    def pin_dialog(self, msg, show_strength):
+        # Needed e.g. when resetting a device ??
+        self.clear_dialog()
 
-    #def pin_dialog(self, msg, show_strength):
-        #Needed e.g. when resetting a device
-        #self.clear_dialog()
-        #dialog = WindowModalDialog(self.top_level_window(), _("Enter PIN"))
-        #matrix = self.pin_matrix_widget_class(show_strength)
-        #vbox = QVBoxLayout()
-        #vbox.addWidget(QLabel(msg))
-        #vbox.addWidget(matrix)
-        #vbox.addLayout(Buttons(CancelButton(dialog), OkButton(dialog)))
-        #dialog.setLayout(vbox)
-        #dialog.exec_()
-        #self.response = str(matrix.get_value())
-        #self.done.set()
+        def set_response(value):
+            self.response = value
+            self.done.set()
 
-    #def matrix_recovery_dialog(self, msg):
-        #if not self.matrix_dialog:
-            #self.matrix_dialog = MatrixDialog(self.top_level_window())
-        #self.matrix_dialog.get_matrix(msg)
-        #self.done.set()
+        dialog = self.pin_matrix_dialog(
+            msg=msg, run_next=set_response)
+        self.dialog = dialog
+        # open the dialog in GUI/Main thread
+        Clock.schedule_once(lambda dt: dialog.open())
 
-    #def passphrase_dialog(self, msg, confirm):
+
+    def matrix_recovery_dialog(self, msg):
+        if not self.matrix_dialog:
+            self.matrix_dialog = MatrixDialog(self.top_level_window())
+        self.matrix_dialog.get_matrix(msg)
+        self.done.set()
+
+    def passphrase_dialog(self, msg, confirm):
         #If confirm is true, require the user to enter the passphrase twice
-        #parent = self.top_level_window()
-        #d = WindowModalDialog(parent, _('Enter Passphrase'))
+        parent = self.top_level_window()
+        d = WindowModalDialog(parent, _('Enter Passphrase'))
 
-        #OK_button = OkButton(d, _('Enter Passphrase'))
-        #OnDevice_button = QPushButton(_('Enter Passphrase on Device'))
+        OK_button = OkButton(d, _('Enter Passphrase'))
+        OnDevice_button = QPushButton(_('Enter Passphrase on Device'))
 
-        #new_pw = PasswordLineEdit()
-        #conf_pw = PasswordLineEdit()
+        new_pw = PasswordLineEdit()
+        conf_pw = PasswordLineEdit()
 
-        #vbox = QVBoxLayout()
-        #label = QLabel(msg + "\n")
-        #label.setWordWrap(True)
+        vbox = QVBoxLayout()
+        label = QLabel(msg + "\n")
+        label.setWordWrap(True)
 
-        #grid = QGridLayout()
-        #grid.setSpacing(8)
-        #grid.setColumnMinimumWidth(0, 150)
-        #grid.setColumnMinimumWidth(1, 100)
-        #grid.setColumnStretch(1,1)
+        grid = QGridLayout()
+        grid.setSpacing(8)
+        grid.setColumnMinimumWidth(0, 150)
+        grid.setColumnMinimumWidth(1, 100)
+        grid.setColumnStretch(1,1)
 
-        #vbox.addWidget(label)
+        vbox.addWidget(label)
 
-        #grid.addWidget(QLabel(_('Passphrase:')), 0, 0)
-        #grid.addWidget(new_pw, 0, 1)
+        grid.addWidget(QLabel(_('Passphrase:')), 0, 0)
+        grid.addWidget(new_pw, 0, 1)
 
-        #if confirm:
-            #grid.addWidget(QLabel(_('Confirm Passphrase:')), 1, 0)
-            #grid.addWidget(conf_pw, 1, 1)
+        if confirm:
+            grid.addWidget(QLabel(_('Confirm Passphrase:')), 1, 0)
+            grid.addWidget(conf_pw, 1, 1)
 
-        #vbox.addLayout(grid)
+        vbox.addLayout(grid)
 
-        #def enable_OK():
-            #if not confirm:
-                #ok = True
-            #else:
-                #ok = new_pw.text() == conf_pw.text()
-            #OK_button.setEnabled(ok)
+        def enable_OK():
+            if not confirm:
+                ok = True
+            else:
+                ok = new_pw.text() == conf_pw.text()
+            OK_button.setEnabled(ok)
 
-        #new_pw.textChanged.connect(enable_OK)
-        #conf_pw.textChanged.connect(enable_OK)
+        new_pw.textChanged.connect(enable_OK)
+        conf_pw.textChanged.connect(enable_OK)
 
-        #vbox.addWidget(OK_button)
+        vbox.addWidget(OK_button)
 
-        #if self.passphrase_on_device:
-            #vbox.addWidget(OnDevice_button)
+        if self.passphrase_on_device:
+            vbox.addWidget(OnDevice_button)
 
-        #d.setLayout(vbox)
+        d.setLayout(vbox)
 
-        #self.passphrase = None
+        self.passphrase = None
 
-        #def ok_clicked():
-            #self.passphrase = new_pw.text()
+        def ok_clicked():
+            self.passphrase = new_pw.text()
 
-        #def on_device_clicked():
-            #self.passphrase = PASSPHRASE_ON_DEVICE
+        def on_device_clicked():
+            self.passphrase = PASSPHRASE_ON_DEVICE
 
-        #OK_button.clicked.connect(ok_clicked)
-        #OnDevice_button.clicked.connect(on_device_clicked)
-        #OnDevice_button.clicked.connect(d.accept)
+        OK_button.clicked.connect(ok_clicked)
+        OnDevice_button.clicked.connect(on_device_clicked)
+        OnDevice_button.clicked.connect(d.accept)
 
-        #d.exec_()
-        #self.done.set()
+        d.exec_()
+        self.done.set()
 
 
 class KivyPlugin(KivyPluginBase):
@@ -226,18 +157,18 @@ class KivyPlugin(KivyPluginBase):
     #   icon_file
     #   pin_matrix_widget_class
 
-    #@only_hook_if_lib
-    #@classmethodraries_available
-    #@hook
-    #def receive_menu(self, menu, addrs, wallet):
-        #if len(addrs) != 1:
-            #return
-        #for keystore in wallet.get_keystores():
-            #if type(keystore) == self.keystore_class:
-                #def show_address(keystore=keystore):
-                    #keystore.thread.add(partial(self.show_address, wallet, addrs[0], keystore))
-                #device_name = "{} ({})".format(self.device, keystore.label)
-                #menu.addAction(_("Show on {}").format(device_name), show_address)
+    @only_hook_if_libraries_available
+    @classmethod
+    @hook
+    def receive_menu(self, menu, addrs, wallet):
+        if len(addrs) != 1:
+            return
+        for keystore in wallet.get_keystores():
+            if type(keystore) == self.keystore_class:
+                def show_address(keystore=keystore):
+                    keystore.thread.add(partial(self.show_address, wallet, addrs[0], keystore))
+                device_name = "{} ({})".format(self.device, keystore.label)
+                menu.addAction(_("Show on {}").format(device_name), show_address)
 
     def show_settings_dialog(self, window, keystore):
         def connect():
@@ -248,200 +179,123 @@ class KivyPlugin(KivyPluginBase):
                 SettingsDialog(window, self, keystore, device_id).exec_()
         keystore.thread.add(connect, on_success=show_dialog)
 
-    #def request_trezor_init_settings(self, wizard, method, device_id):
-        #vbox = QVBoxLayout()
-        #next_enabled = True
+    def request_trezor_init_settings(self, wizard, method, device_id,
+                                     run_next=None):
+        # initialize device screen/flow
+        from electrum.gui.kivy.uix.dialogs.trezor_init_settings\
+            import TrezorInitSettingsDialog
+        # get device details
+        devmgr = self.device_manager()
+        client = devmgr.client_by_id(device_id)
+        if not client:
+            wizard.show_error(_("The device was disconnected."))
+            return wizard.choose_hw_device()
 
-        #devmgr = self.device_manager()
-        #client = devmgr.client_by_id(device_id)
-        #if not client:
-            #raise Exception(_("The device was disconnected."))
-        #model = client.get_trezor_model()
-        #fw_version = client.client.version
-        #capabilities = client.client.features.capabilities
-        #have_shamir = Capability.Shamir in capabilities
-
-        #label
-        #label = QLabel(_("Enter a label to name your device:"))
-        #name = QLineEdit()
-        #hl = QHBoxLayout()
-        #hl.addWidget(label)
-        #hl.addWidget(name)
-        #hl.addStretch(1)
-        #vbox.addLayout(hl)
-
-        #Backup type
-        #gb_backuptype = QGroupBox()
-        #hbox_backuptype = QHBoxLayout()
-        #gb_backuptype.setLayout(hbox_backuptype)
-        #vbox.addWidget(gb_backuptype)
-        #gb_backuptype.setTitle(_('Select backup type:'))
-        #bg_backuptype = QButtonGroup()
-
-        #rb_single = QRadioButton(gb_backuptype)
-        #rb_single.setText(_('Single seed (BIP39)'))
-        #bg_backuptype.addButton(rb_single)
-        #bg_backuptype.setId(rb_single, BackupType.Bip39)
-        #hbox_backuptype.addWidget(rb_single)
-        #rb_single.setChecked(True)
-
-        #rb_shamir = QRadioButton(gb_backuptype)
-        #rb_shamir.setText(_('Shamir'))
-        #bg_backuptype.addButton(rb_shamir)
-        #bg_backuptype.setId(rb_shamir, BackupType.Slip39_Basic)
-        #hbox_backuptype.addWidget(rb_shamir)
-        #rb_shamir.setEnabled(Capability.Shamir in capabilities)
-        #rb_shamir.setVisible(False)  # visible with "expert settings"
-
-        #rb_shamir_groups = QRadioButton(gb_backuptype)
-        #rb_shamir_groups.setText(_('Super Shamir'))
-        #bg_backuptype.addButton(rb_shamir_groups)
-        #bg_backuptype.setId(rb_shamir_groups, BackupType.Slip39_Advanced)
-        #hbox_backuptype.addWidget(rb_shamir_groups)
-        #rb_shamir_groups.setEnabled(Capability.ShamirGroups in capabilities)
-        #rb_shamir_groups.setVisible(False)  # visible with "expert settings"
-
-        #word count
-        #word_count_buttons = {}
-
-        #gb_numwords = QGroupBox()
-        #hbox1 = QHBoxLayout()
-        #gb_numwords.setLayout(hbox1)
-        #vbox.addWidget(gb_numwords)
-        #gb_numwords.setTitle(_("Select seed/share length:"))
-        #bg_numwords = QButtonGroup()
-        #for count in (12, 18, 20, 24, 33):
-            #rb = QRadioButton(gb_numwords)
-            #word_count_buttons[count] = rb
-            #rb.setText(_("{:d} words").format(count))
-            #bg_numwords.addButton(rb)
-            #bg_numwords.setId(rb, count)
-            #hbox1.addWidget(rb)
-            #rb.setChecked(True)
-
-        #def configure_word_counts():
-            #if model == "1":
-                #checked_wordcount = 24
-            #else:
-                #checked_wordcount = 12
-
-            #if method == TIM_RECOVER:
-                #if have_shamir:
-                    #valid_word_counts = (12, 18, 20, 24, 33)
-                #else:
-                    #valid_word_counts = (12, 18, 24)
-            #elif rb_single.isChecked():
-                #valid_word_counts = (12, 18, 24)
-                #gb_numwords.setTitle(_('Select seed length:'))
-            #else:
-                #valid_word_counts = (20, 33)
-                #checked_wordcount = 20
-                #gb_numwords.setTitle(_('Select share length:'))
-
-            #word_count_buttons[checked_wordcount].setChecked(True)
-            #for c, btn in word_count_buttons.items():
-                #btn.setVisible(c in valid_word_counts)
-
-        #bg_backuptype.buttonClicked.connect(configure_word_counts)
-        #configure_word_counts()
-
-        #set up conditional visibility:
-        #1. backup_type is only visible when creating new seed
-        #gb_backuptype.setVisible(method == TIM_NEW)
-        #2. word_count is not visible when recovering on TT
-        #if method == TIM_RECOVER and model != "1":
-            #gb_numwords.setVisible(False)
-
-        #PIN
-        #cb_pin = QCheckBox(_('Enable PIN protection'))
-        #cb_pin.setChecked(True)
-        #vbox.addWidget(WWLabel(RECOMMEND_PIN))
-        #vbox.addWidget(cb_pin)
-
-        #"expert settings" button
-        #expert_vbox = QVBoxLayout()
-        #expert_widget = QWidget()
-        #expert_widget.setLayout(expert_vbox)
-        #expert_widget.setVisible(False)
-        #expert_button = QPushButton(_("Show expert settings"))
-        #def show_expert_settings():
-            #expert_button.setVisible(False)
-            #expert_widget.setVisible(True)
-            #rb_shamir.setVisible(True)
-            #rb_shamir_groups.setVisible(True)
-        #expert_button.clicked.connect(show_expert_settings)
-        #vbox.addWidget(expert_button)
-
-        #passphrase
-        #passphrase_msg = WWLabel(PASSPHRASE_HELP_SHORT)
-        #passphrase_warning = WWLabel(PASSPHRASE_NOT_PIN)
-        #passphrase_warning.setStyleSheet("color: red")
-        #cb_phrase = QCheckBox(_('Enable passphrases'))
-        #cb_phrase.setChecked(False)
-        #expert_vbox.addWidget(passphrase_msg)
-        #expert_vbox.addWidget(passphrase_warning)
-        #expert_vbox.addWidget(cb_phrase)
-
-        #ask for recovery type (random word order OR matrix)
-        #bg_rectype = None
-        #if method == TIM_RECOVER and model == '1':
-            #gb_rectype = QGroupBox()
-            #hbox_rectype = QHBoxLayout()
-            #gb_rectype.setLayout(hbox_rectype)
-            #expert_vbox.addWidget(gb_rectype)
-            #gb_rectype.setTitle(_("Select recovery type:"))
-            #bg_rectype = QButtonGroup()
-
-            #rb1 = QRadioButton(gb_rectype)
-            #rb1.setText(_('Scrambled words'))
-            #bg_rectype.addButton(rb1)
-            #bg_rectype.setId(rb1, RecoveryDeviceType.ScrambledWords)
-            #hbox_rectype.addWidget(rb1)
-            #rb1.setChecked(True)
-
-            #rb2 = QRadioButton(gb_rectype)
-            #rb2.setText(_('Matrix'))
-            #bg_rectype.addButton(rb2)
-            #bg_rectype.setId(rb2, RecoveryDeviceType.Matrix)
-            #hbox_rectype.addWidget(rb2)
-
-        #no backup
-        #cb_no_backup = None
-        #if method == TIM_NEW:
-            #cb_no_backup = QCheckBox(f'''{_('Enable seedless mode')}''')
-            #cb_no_backup.setChecked(False)
-            #if (model == '1' and fw_version >= (1, 7, 1)
-                    #or model == 'T' and fw_version >= (2, 0, 9)):
-                #cb_no_backup.setToolTip(SEEDLESS_MODE_WARNING)
-            #else:
-                #cb_no_backup.setEnabled(False)
-                #cb_no_backup.setToolTip(_('Firmware version too old.'))
-            #expert_vbox.addWidget(cb_no_backup)
-
-        #vbox.addWidget(expert_widget)
-        #wizard.exec_layout(vbox, next_enabled=next_enabled)
-
-        #return TrezorInitSettings(
-            #word_count=bg_numwords.checkedId(),
-            #label=name.text(),
-            #pin_enabled=cb_pin.isChecked(),
-            #passphrase_enabled=cb_phrase.isChecked(),
-            #recovery_type=bg_rectype.checkedId() if bg_rectype else None,
-            #backup_type=bg_backuptype.checkedId(),
-            #no_backup=cb_no_backup.isChecked() if cb_no_backup else False,
-        #)
+        TrezorInitSettingsDialog(client, method, wizard=wizard, run_next=run_next).open()
 
 
 class Plugin(TrezorPlugin, KivyPlugin):
     icon_unpaired = "trezor_unpaired.png"
     icon_paired = "trezor.png"
 
+    def scan_and_create_client_for_device(self, device_info,
+                                          wizard: 'BaseWizard', purpose):
+        devmgr = self.device_manager()
+
+        def set_client_id(plugin, device_info, purpose):
+            device_id = device_info.device.id_
+            client = devmgr.client_by_id(device_id)
+            Clock.schedule_once(partial(
+                plugin._on_client, client, wizard, device_info, device_id, purpose))
+
+        wizard.run_task_without_blocking_gui(
+            task=partial(set_client_id, self, device_info, purpose))
+
+    def _on_client(self, *args):
+        try:
+            self._safe_on_client(*args[:-1])
+        except OSError as e:
+            args[1].show_error(_('We encountered an error while connecting to your device:')
+                            + '\n' + str(e) + '\n'
+                            + _('To try to fix this, we will now re-pair with your device.') + '\n'
+                            + _('Please try again.'))
+            devmgr.unpair_id(device_info.device.id_)
+            args[1].choose_hw_device()
+        except OutdatedHwFirmwareException as e:
+            if args[1].question(e.text_ignore_old_fw_and_continue(), title=_("Outdated device firmware")):
+                args[1].plugin.set_ignore_outdated_fw()
+                # will need to re-pair
+                devmgr.unpair_id(device_info.device.id_)
+            args[1].choose_hw_device()
+        except (UserCancelled, GoBack):
+            args[1].choose_hw_device()
+        except UserFacingException as e:
+            args[1].show_error(str(e))
+            args[1].choose_hw_device()
+        except BaseException as e:
+            args[1].logger.exception('')
+            args[1].show_error(str(e))
+            args[1].choose_hw_device()
+
+    def _safe_on_client(self, client, wizard: 'BaseWizard', device_info, device_id, purpose):
+        if client is None:
+            raise UserFacingException(
+                _('Failed to create a client for this device.') + '\n' +
+                _('Make sure it is in the correct state.'))
+        client.handler = self.create_handler(wizard)
+        # check_client
+        if not client.is_uptodate():
+            msg = (_('Outdated {} firmware for device labelled {}. Please '
+                     'download the updated firmware from {}')
+                   .format(self.device, client.label(), self.firmware_URL))
+            raise OutdatedHwFirmwareException(msg)
+        if not device_info.initialized:
+            self.initialize_device(device_id, wizard, client.handler)
+            return
+        is_creating_wallet = purpose == HWD_SETUP_NEW_WALLET
+
+        def _next(_client, _purpose):
+            _client.used()
+            self._run_next_on_client(_client, _purpose)
+
+        wizard.run_task_without_blocking_gui(
+            task=lambda: 
+                client.get_xpub('m', 'standard', creating=is_creating_wallet),
+            on_finished=partial(_next, client, purpose),
+            go_back=partial(wizard.choose_hw_device))
+
+    def initialize_device(self, device_id, wizard, handler):
+        # Initialization method
+        msg = _("Choose how you want to initialize your {}.").format(self.device, self.device)
+        choices = [
+            # Must be short as QT doesn't word-wrap radio button text
+            (TIM_NEW, _("Let the device generate a completely new seed randomly")),
+            (TIM_RECOVER, _("Recover from a seed you have previously written down")),
+        ]
+        def f(method, settings):
+            t = threading.Thread(
+                target=self._initialize_device_safe, args=(settings, method, device_id, wizard, handler))
+            t.setDaemon(True)
+            t.start()
+
+        wizard.choice_dialog(
+            title=_('Initialize Device'), message=msg, choices=choices,
+            run_next=lambda method:
+                self.request_trezor_init_settings(
+                    wizard, method, device_id, run_next=partial(f, method)))
+
+    # override setup_device for trezor acc to kivy
+    def setup_device(self, device_info, wizard, purpose, run_next=None):
+        self._run_next_on_client = run_next
+        self.scan_and_create_client_for_device(
+            device_info=device_info, wizard=wizard, purpose=purpose)
+
     def create_handler(self, window):
         return KivyHandler(window, self.pin_matrix_widget_class(), self.device)
 
     def pin_matrix_widget_class(self):
-        from trezorlib.qt.pinmatrix import PinMatrixWidget
-        return PinMatrixWidget
+        from electrum.gui.kivy.uix.dialogs.pinmatrix import PinMatrixDialog
+        return PinMatrixDialog
 
 
 #class SettingsDialog(WindowModalDialog):

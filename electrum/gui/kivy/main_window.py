@@ -1042,6 +1042,7 @@ class ElectrumWindow(App):
             width: width of the Bubble
             arrow_pos: arrow position for the bubble
         '''
+        Logger.debug('Electrum: show info bubble: {}'.format(text))
         text = str(text)  # so that we also handle e.g. Exception
         info_bubble = self.info_bubble
         if not info_bubble:
