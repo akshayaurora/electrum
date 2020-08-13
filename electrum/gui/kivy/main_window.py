@@ -1049,6 +1049,7 @@ class ElectrumWindow(App):
             info_bubble = self.info_bubble = Factory.InfoBubble()
 
         win = Window
+        info_bubble.hide(now=True)
         if info_bubble.parent:
             win.remove_widget(info_bubble
                                  if not info_bubble.modal else

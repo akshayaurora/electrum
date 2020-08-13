@@ -29,6 +29,9 @@ from functools import partial
 from typing import TYPE_CHECKING, Union, Optional, Callable, Any
 
 from kivy.app import App
+
+app = App.get_running_app()
+
 #from electrum.gui.kivy.password_dialog import PasswordLayout, PW_PASSPHRASE
 from electrum.gui.kivy.main_window import ElectrumWindow
 from electrum.gui.kivy.uix.dialogs.installwizard import InstallWizard
@@ -52,7 +55,6 @@ class KivyHandlerBase(HardwareHandlerBase, Logger):
     logic for handling I/O.'''
 
     #passphrase_signal = pyqtSignal(object, object)
-    #message_signal = pyqtSignal(object, object)
     #error_signal = pyqtSignal(object, object)
     #word_signal = pyqtSignal(object)
     #clear_signal = pyqtSignal()
@@ -65,7 +67,6 @@ class KivyHandlerBase(HardwareHandlerBase, Logger):
         assert win.gui_thread == threading.current_thread(), 'must be called from GUI thread'
         #self.clear_signal.connect(self.clear_dialog)
         #self.error_signal.connect(self.error_dialog)
-        #self.message_signal.connect(self.message_dialog)
         #self.passphrase_signal.connect(self.passphrase_dialog)
         #self.word_signal.connect(self.word_dialog)
         #self.query_signal.connect(self.win_query_choice)
@@ -98,11 +99,11 @@ class KivyHandlerBase(HardwareHandlerBase, Logger):
         return self.ok
 
     def show_message(self, msg, on_cancel=None):
-        self.message_signal.emit(msg, on_cancel)
+        self.message_dialog(msg, on_cancel)
 
     def show_error(self, msg, blocking=False):
         self.done.clear()
-        self.error_signal.emit(msg, blocking)
+        self.error_dialog(msg, blocking)
         if blocking:
             self.done.wait()
 
@@ -161,18 +162,10 @@ class KivyHandlerBase(HardwareHandlerBase, Logger):
     def message_dialog(self, msg, on_cancel):
         #Called more than once during signing, to confirm output and fee
         self.clear_dialog()
-        title = _('Please check your {} device').format(self.device)
-        self.dialog = dialog = WindowModalDialog(self.top_level_window(), title)
-        l = QLabel(msg)
-        vbox = QVBoxLayout(dialog)
-        vbox.addWidget(l)
-        if on_cancel:
-            dialog.rejected.connect(on_cancel)
-            vbox.addLayout(Buttons(CancelButton(dialog)))
-        dialog.show()
+        app.show_info(msg, modal=True)
 
     def error_dialog(self, msg, blocking):
-        self.win.show_error(msg, parent=self.top_level_window())
+        app.show_error(msg)
         if blocking:
             self.done.set()
 

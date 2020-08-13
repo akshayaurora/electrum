@@ -181,12 +181,13 @@ class InfoBubble(Factory.Bubble):
         def on_stop(*l):
             if self.modal:
                 # check if trying to remove non existent bubble
-                if not hasattr(self, '_modal_view'): return
-                # bubble exists, now remove it
-                m = self._modal_view
-                m.remove_widget(self)
-                Window.remove_widget(m)
-            Window.remove_widget(self)
+                if hasattr(self, '_modal_view'):
+                    # bubble exists, now remove it
+                    m = self._modal_view
+                    m.remove_widget(self)
+                    Window.remove_widget(m)
+                else:
+                    Window.remove_widget(self)
             if self.exit:
                 App.get_running_app().stop()
                 import sys

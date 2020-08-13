@@ -17,8 +17,9 @@ from kivy.core.window import Window
 from kivy.clock import Clock
 from kivy.utils import platform
 
-from electrum.base_wizard import (HW_PluginBase, HWD_SETUP_NEW_WALLET, ChooseHwDeviceAgain)
-from electrum.base_wizard import BaseWizard
+from electrum.base_wizard import (
+    HW_PluginBase, HWD_SETUP_NEW_WALLET, ChooseHwDeviceAgain, BaseWizard)
+from electrum.bip32 import normalize_bip32_derivation
 from electrum.util import is_valid_email
 
 from electrum.storage import WalletStorage, StorageEncryptionVersion
@@ -1101,11 +1102,13 @@ class InstallWizard(BaseWizard, Widget):
             # run your threaded function
             # Note to self: Remove the exception handling while debugging
             # and/or pay attention to kivy `debug` logs
-            try:
-                task()
-            except Exception as err:
-                if str(err): self.show_error(str(err))
-                return Clock.schedule_once(lambda dt: go_back())
+            # FIXME
+            #try:
+            task()
+            #except Exception as err:
+                #if str(err): self.show_error(str(err))
+                #if go_back: Clock.schedule_once(lambda dt: go_back())
+                #return
             # on wizard completion hide message
             Clock.schedule_once(lambda dt: app.info_bubble.hide(now=True), -1)
             if on_finished:
@@ -1132,13 +1135,15 @@ class InstallWizard(BaseWizard, Widget):
         except ChooseHwDeviceAgain:
             pass
 
-    def on_device(self, name, device_info: 'DeviceInfo', *, purpose, storage: WalletStorage = None):
+    def on_device(self, name, device_info: 'DeviceInfo', *, 
+                  purpose, storage: WalletStorage = None):
         self.plugin = self.plugins.get_plugin(name)
         assert isinstance(self.plugin, HW_PluginBase)
         devmgr = self.plugins.device_manager
-        self.plugin.setup_device(device_info, self, purpose, run_next=self.on_hw_client)
+        self.plugin.setup_device(device_info, self, purpose,
+                                 run_next=partial(self.on_hw_client, name, device_info))
 
-    def on_hw_client(self, client, purpose):
+    def on_hw_client(self, name, device_info, client, purpose):
         if purpose == HWD_SETUP_NEW_WALLET:
             def f(derivation, script_type):
                 derivation = normalize_bip32_derivation(derivation)

@@ -13,8 +13,12 @@ from .trezor import (TrezorPlugin, TIM_NEW, TIM_RECOVER, TrezorInitSettings,
                      PASSPHRASE_ON_DEVICE, Capability, BackupType, RecoveryDeviceType)
 
 
+from kivy.app import App
+app = App.get_running_app()
+
 from kivy.properties import ObjectProperty
 from kivy.clock import Clock
+from kivy.logger import Logger
 
 PASSPHRASE_HELP_SHORT =_(
     "Passphrases allow you to access new wallets, each "
@@ -198,46 +202,17 @@ class Plugin(TrezorPlugin, KivyPlugin):
     icon_unpaired = "trezor_unpaired.png"
     icon_paired = "trezor.png"
 
-    def scan_and_create_client_for_device(self, device_info,
-                                          wizard: 'BaseWizard', purpose):
-        devmgr = self.device_manager()
+    def scan_and_create_client_for_device(self, device_id: str, wizard: 'BaseWizard',
+                                          run_next=None):
 
-        def set_client_id(plugin, device_info, purpose):
-            device_id = device_info.device.id_
+        def set_client_id():
+            devmgr = self.device_manager()
             client = devmgr.client_by_id(device_id)
-            Clock.schedule_once(partial(
-                plugin._on_client, client, wizard, device_info, device_id, purpose))
+            Clock.schedule_once(lambda dt: run_next(client))
 
-        wizard.run_task_without_blocking_gui(
-            task=partial(set_client_id, self, device_info, purpose))
+        wizard.run_task_without_blocking_gui(task=set_client_id)
 
-    def _on_client(self, *args):
-        try:
-            self._safe_on_client(*args[:-1])
-        except OSError as e:
-            args[1].show_error(_('We encountered an error while connecting to your device:')
-                            + '\n' + str(e) + '\n'
-                            + _('To try to fix this, we will now re-pair with your device.') + '\n'
-                            + _('Please try again.'))
-            devmgr.unpair_id(device_info.device.id_)
-            args[1].choose_hw_device()
-        except OutdatedHwFirmwareException as e:
-            if args[1].question(e.text_ignore_old_fw_and_continue(), title=_("Outdated device firmware")):
-                args[1].plugin.set_ignore_outdated_fw()
-                # will need to re-pair
-                devmgr.unpair_id(device_info.device.id_)
-            args[1].choose_hw_device()
-        except (UserCancelled, GoBack):
-            args[1].choose_hw_device()
-        except UserFacingException as e:
-            args[1].show_error(str(e))
-            args[1].choose_hw_device()
-        except BaseException as e:
-            args[1].logger.exception('')
-            args[1].show_error(str(e))
-            args[1].choose_hw_device()
-
-    def _safe_on_client(self, client, wizard: 'BaseWizard', device_info, device_id, purpose):
+    def _safe_on_client(self, client, wizard: 'BaseWizard', device_info, device_id, purpose, run_next=None):
         if client is None:
             raise UserFacingException(
                 _('Failed to create a client for this device.') + '\n' +
@@ -249,34 +224,38 @@ class Plugin(TrezorPlugin, KivyPlugin):
                      'download the updated firmware from {}')
                    .format(self.device, client.label(), self.firmware_URL))
             raise OutdatedHwFirmwareException(msg)
+
+        def get_xpub():
+            is_creating_wallet = purpose == HWD_SETUP_NEW_WALLET
+
+            def _next(_client, _purpose):
+                _client.used()
+                run_next(_client, _purpose)
+
+            wizard.run_task_without_blocking_gui(
+                task=lambda: 
+                    client.get_xpub('m', 'standard', creating=is_creating_wallet),
+                on_finished=partial(_next, client, purpose),
+                go_back=partial(wizard.choose_hw_device))
+
         if not device_info.initialized:
-            self.initialize_device(device_id, wizard, client.handler)
+            self.initialize_device(device_id, wizard, client.handler,
+                                   run_next=get_xpub)
             return
-        is_creating_wallet = purpose == HWD_SETUP_NEW_WALLET
+        get_xpub()
 
-        def _next(_client, _purpose):
-            _client.used()
-            self._run_next_on_client(_client, _purpose)
 
-        wizard.run_task_without_blocking_gui(
-            task=lambda: 
-                client.get_xpub('m', 'standard', creating=is_creating_wallet),
-            on_finished=partial(_next, client, purpose),
-            go_back=partial(wizard.choose_hw_device))
-
-    def initialize_device(self, device_id, wizard, handler):
+    def initialize_device(self, device_id, wizard, handler, run_next=None):
         # Initialization method
         msg = _("Choose how you want to initialize your {}.").format(self.device, self.device)
         choices = [
-            # Must be short as QT doesn't word-wrap radio button text
             (TIM_NEW, _("Let the device generate a completely new seed randomly")),
             (TIM_RECOVER, _("Recover from a seed you have previously written down")),
         ]
         def f(method, settings):
-            t = threading.Thread(
-                target=self._initialize_device_safe, args=(settings, method, device_id, wizard, handler))
-            t.setDaemon(True)
-            t.start()
+            wizard.run_task_without_blocking_gui(partial(
+                self._initialize_device_safe, settings,
+                method, device_id, wizard, handler, run_next=run_next))
 
         wizard.choice_dialog(
             title=_('Initialize Device'), message=msg, choices=choices,
@@ -284,11 +263,57 @@ class Plugin(TrezorPlugin, KivyPlugin):
                 self.request_trezor_init_settings(
                     wizard, method, device_id, run_next=partial(f, method)))
 
+    def _initialize_device_safe(self, settings, method, device_id, wizard, handler, run_next=None):
+        exit_code = delay = 0
+        try:
+            self._initialize_device(settings, method, device_id, wizard, handler)
+        except UserCancelled:
+            exit_code = 1
+        except BaseException as e:
+            Logger.debug('Trezor: {}'.format(e))
+            handler.show_error(repr(e))
+            exit_code = delay = 1
+        finally:
+            if exit_code == 1:
+                Clock.schedule_once(lambda dt: wizard.choose_hw_device(), delay)
+                return
+            # run get_xpub
+            Clock.schedule_once(lambda dt: run_next())
+
     # override setup_device for trezor acc to kivy
     def setup_device(self, device_info, wizard, purpose, run_next=None):
-        self._run_next_on_client = run_next
+        device_id = device_info.device.id_
+
+        def on_client(client):
+            try:
+                self._safe_on_client(client, wizard, device_info,
+                                     device_id, purpose, run_next=run_next)
+            except OSError as e:
+                wizard.show_error(
+                    _('We encountered an error while connecting to your device:')
+                    + '\n' + str(e) + '\n'
+                    + _('To try to fix this, we will now re-pair with your device.') + '\n'
+                    + _('Please try again.'))
+                devmgr.unpair_id(device_info.device.id_)
+                wizard.choose_hw_device()
+            except OutdatedHwFirmwareException as e:
+                if wizard.question(e.text_ignore_old_fw_and_continue(), title=_("Outdated device firmware")):
+                    wizard.plugin.set_ignore_outdated_fw()
+                    # will need to re-pair
+                    devmgr.unpair_id(device_info.device.id_)
+                wizard.choose_hw_device()
+            except (UserCancelled, GoBack):
+                wizard.choose_hw_device()
+            except UserFacingException as e:
+                wizard.show_error(str(e))
+                wizard.choose_hw_device()
+            except BaseException as e:
+                wizard.logger.exception('')
+                wizard.show_error(str(e))
+                wizard.choose_hw_device()
+
         self.scan_and_create_client_for_device(
-            device_info=device_info, wizard=wizard, purpose=purpose)
+            device_id=device_id, wizard=wizard, run_next=on_client)
 
     def create_handler(self, window):
         return KivyHandler(window, self.pin_matrix_widget_class(), self.device)

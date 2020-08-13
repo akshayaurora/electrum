@@ -117,12 +117,15 @@ class TrezorInitSettingsDialog(WizardDialog):
                             group: 'seedtype'
                             text: _('Shamir')
                     Widget:
+                        id: spacer
                         size_hint_y: None
                         height: dp(9)
                     SCheckBox
                         id: chk_super_shamir
                         disabled: True
                         opacity: 0
+                        size_hint_y: None
+                        height: 0
                         group: 'seedtype'
                         text: _('Super Shamir')
                 Group
@@ -154,8 +157,9 @@ class TrezorInitSettingsDialog(WizardDialog):
                     on_state:
                         chk_seedless.active = chk_passphrase.active = False
                         chk_shamir.opacity = chk_super_shamir.opacity = height = 0
+                        chk_super_shamir.size_hint_y = None; chk_super_shamir.height = dp(0)
                         grh = dp(72); gr.x = dp(1000)
-                        if args[1] == 'down': height = gr.minimum_height; chk_shamir.opacity = chk_super_shamir.opacity = 1; grh = dp(97); gr.x = dp(10)
+                        if args[1] == 'down': height = gr.minimum_height; chk_shamir.opacity = chk_super_shamir.opacity = 1; grh = dp(97); gr.x = dp(10); chk_super_shamir.size_hint_y = 1
                         from kivy.animation import Animation
                         Animation(height=height).start(sv)
                         if gb_backup_type.height > 0: Animation(height = grh).start(gb_backup_type)
@@ -225,11 +229,11 @@ class TrezorInitSettingsDialog(WizardDialog):
 
         chks = self.ids.chk_shamir
         chks.retId = BackupType.Slip39_Basic
-        chks.disabled = have_shamir
+        chks.disabled = not have_shamir
 
         chkss = self.ids.chk_super_shamir
         chkss.retId = BackupType.Slip39_Advanced
-        chkss.disabled = Capability.ShamirGroups in capabilities
+        chkss.disabled = not Capability.ShamirGroups in capabilities
 
         word_count_buttons = {}
         bg_numwords = self.ids.bx_numwords

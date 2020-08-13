@@ -21,9 +21,8 @@ class MatrixButton(Button):
 <MatrixButton>
     text: '?'
     on_release:
-        ti_pass = self.parent.dialog.ids.ti_pass;\
-        ti_pass.text += str(self._intval);\
-        ti_pass.focus = True
+        ti_pass = self.parent.dialog.ids.ti_pass
+        ti_pass.text += str(self._intval)
 ''')
 
 
@@ -39,7 +38,7 @@ class PinMatrixDialog(WizardDialog):
 <PinMatrixDialog>
     value: 'next'
     spacing: dp(9)
-    Label:
+    SeedLabel:
         text: root.msg
         size_hint: 1, None
         height: dp(56)
@@ -88,8 +87,8 @@ class PinMatrixDialog(WizardDialog):
             #pupulate only once.
             return
 
-        for x in range(3)[::-1]:
-            for y in range(3):
+        for y in range(3)[::-1]:
+            for x in range(3):
                 m = MatrixButton()
                 m._intval = x + y * 3 + 1
                 container.add_widget(m)
