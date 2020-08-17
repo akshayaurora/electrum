@@ -54,33 +54,21 @@ class KivyHandlerBase(HardwareHandlerBase, Logger):
     '''An interface between the GUI (here, Kivy) and the device handling
     logic for handling I/O.'''
 
-    #passphrase_signal = pyqtSignal(object, object)
-    #error_signal = pyqtSignal(object, object)
-    #word_signal = pyqtSignal(object)
-    #clear_signal = pyqtSignal()
-    #query_signal = pyqtSignal(object, object)
-    #yes_no_signal = pyqtSignal(object)
-    #status_signal = pyqtSignal(object)
-
     def __init__(self,  win: Union[ElectrumWindow, InstallWizard], device: str):
         Logger.__init__(self)
         assert win.gui_thread == threading.current_thread(), 'must be called from GUI thread'
-        #self.clear_signal.connect(self.clear_dialog)
         #self.error_signal.connect(self.error_dialog)
         #self.passphrase_signal.connect(self.passphrase_dialog)
         #self.word_signal.connect(self.word_dialog)
         #self.query_signal.connect(self.win_query_choice)
         #self.yes_no_signal.connect(self.win_yes_no_question)
-        #self.status_signal.connect(self._update_status)
         self.win = win
         self.device = device
         self.dialog = None
         self.done = threading.Event()
 
     def update_status(self, paired):
-        self.status_signal.emit(paired)
-
-    def _update_status(self, paired):
+        #TODO Implement equal icon on mobile
         if hasattr(self, 'button'):
             button = self.button
             icon_name = button.icon_paired if paired else button.icon_unpaired

@@ -103,7 +103,7 @@ Builder.load_string('''
         GridLayout:
             cols: 1
             id: crcontent
-            spacing: '1dp'
+            spacing: '10dp'
         Widget:
             size_hint: 1, 0.3
         GridLayout:
@@ -813,7 +813,14 @@ class CLButton(ToggleButton):
         self.root.script_type = self.script_type
         self.root.set_text(self.value)
 
-class ChoiceLineDialog(WizardChoiceDialog):
+
+# Warning: changed ChoiceLineDialog to inherit from
+# WizardDialog instead from WizardChoiceDialog as 
+# choices layout seemed to be replicated.(too much space was left above as a result)
+# Still keeping this warning till we are sure this does not lead to any issues
+# remove if no issues found.
+
+class ChoiceLineDialog(WizardDialog):
     title = StringProperty('')
     message1 = StringProperty('')
     message2 = StringProperty('')
@@ -1102,13 +1109,16 @@ class InstallWizard(BaseWizard, Widget):
             # run your threaded function
             # Note to self: Remove the exception handling while debugging
             # and/or pay attention to kivy `debug` logs
-            # FIXME
-            #try:
-            task()
-            #except Exception as err:
-                #if str(err): self.show_error(str(err))
-                #if go_back: Clock.schedule_once(lambda dt: go_back())
-                #return
+            try:
+                task()
+            except Exception as err:
+                delay = 0
+                if str(err): self.show_error(str(err)); delay = .5
+                # go back after displaying the error for .5 seconds
+                # the go back function could show another message
+                # hiding previous error.
+                if go_back: Clock.schedule_once(lambda dt: go_back(), delay)
+                return
             # on wizard completion hide message
             Clock.schedule_once(lambda dt: app.info_bubble.hide(now=True), -1)
             if on_finished:
@@ -1160,6 +1170,39 @@ class InstallWizard(BaseWizard, Widget):
                 raise
         else:
             raise Exception('unknown purpose: %s' % purpose)
+
+    def on_hw_derivation(self, name, device_info: 'DeviceInfo', derivation, xtype):
+        from electrum.keystore import hardware_keystore
+        from electrum.base_wizard import ScriptTypeNotSupported
+        devmgr = self.plugins.device_manager
+        assert isinstance(self.plugin, HW_PluginBase)
+        try:
+            def on_xpub(xpub):
+                client = devmgr.client_by_id(device_info.device.id_, scan_now=False)
+                if not client: raise Exception("failed to find client for device id")
+                root_fingerprint = client.request_root_fingerprint_from_device()
+                label = client.label()  # use this as device_info.label might be outdated!
+                soft_device_id = client.get_soft_device_id()  # use this as device_info.device_id might be outdated!
+                d = {
+                    'type': 'hardware',
+                    'hw_type': name,
+                    'derivation': derivation,
+                    'root_fingerprint': root_fingerprint,
+                    'xpub': xpub,
+                    'label': label,
+                    'soft_device_id': soft_device_id,
+                }
+                k = hardware_keystore(d)
+                self.on_keystore(k)
+
+            self.plugin.get_xpub(
+                device_info.device.id_, derivation, xtype, self, run_next=on_xpub)
+        except ScriptTypeNotSupported:
+            raise  # this is handled in derivation_dialog
+        except BaseException as e:
+            self.logger.exception('')
+            self.show_error(e)
+            raise ChooseHwDeviceAgain()
 
     def terminate(self, *, storage=None, db=None, aborted=False):
         if storage is None and not aborted:

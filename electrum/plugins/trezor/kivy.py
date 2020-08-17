@@ -5,7 +5,8 @@ from electrum.i18n import _
 from electrum.plugin import hook
 from electrum.util import bh2u, UserFacingException
 from electrum.base_wizard import (HWD_SETUP_NEW_WALLET, ChooseHwDeviceAgain,
-    UserFacingException, UserCancelled, GoBack, OutdatedHwFirmwareException)
+    UserFacingException, UserCancelled, GoBack, OutdatedHwFirmwareException,
+    ScriptTypeNotSupported)
 
 from ..hw_wallet.kivy import KivyHandlerBase, KivyPluginBase
 from ..hw_wallet.plugin import only_hook_if_libraries_available
@@ -45,10 +46,7 @@ class KivyHandler(KivyHandlerBase):
     def __init__(self, win, pin_matrix_dialog, device):
         super(KivyHandler, self).__init__(win, device)
         self.pin_matrix_dialog = pin_matrix_dialog
-        #self.pin_signal.connect(self.pin_dialog)
         #self.matrix_signal.connect(self.matrix_recovery_dialog)
-        #self.close_matrix_dialog_signal.connect(self._close_matrix_dialog)
-        #self.pin_matrix_widget_class = pin_matrix_widget_class
         #self.matrix_dialog = None
         #self.passphrase_on_device = False
 
@@ -76,6 +74,7 @@ class KivyHandler(KivyHandlerBase):
 
         def set_response(value):
             self.response = value
+            if value: self.show_message(_('Waiting for Pin'))
             self.done.set()
 
         dialog = self.pin_matrix_dialog(
@@ -225,7 +224,7 @@ class Plugin(TrezorPlugin, KivyPlugin):
                    .format(self.device, client.label(), self.firmware_URL))
             raise OutdatedHwFirmwareException(msg)
 
-        def get_xpub():
+        def run_get_xpub():
             is_creating_wallet = purpose == HWD_SETUP_NEW_WALLET
 
             def _next(_client, _purpose):
@@ -240,9 +239,9 @@ class Plugin(TrezorPlugin, KivyPlugin):
 
         if not device_info.initialized:
             self.initialize_device(device_id, wizard, client.handler,
-                                   run_next=get_xpub)
+                                   run_next=run_get_xpub)
             return
-        get_xpub()
+        run_get_xpub()
 
 
     def initialize_device(self, device_id, wizard, handler, run_next=None):
@@ -311,6 +310,18 @@ class Plugin(TrezorPlugin, KivyPlugin):
                 wizard.logger.exception('')
                 wizard.show_error(str(e))
                 wizard.choose_hw_device()
+
+        self.scan_and_create_client_for_device(
+            device_id=device_id, wizard=wizard, run_next=on_client)
+
+    def get_xpub(self, device_id, derivation, xtype, wizard, run_next=None):
+        if xtype not in self.SUPPORTED_XTYPES:
+            raise ScriptTypeNotSupported(_('This type of script is not supported with {}.').format(self.device))
+
+        def on_client(client):
+            xpub = client.get_xpub(derivation, xtype)
+            client.used()
+            run_next(xpub)
 
         self.scan_and_create_client_for_device(
             device_id=device_id, wizard=wizard, run_next=on_client)
