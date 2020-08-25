@@ -85,6 +85,9 @@ class EventsDialog(Factory.Popup):
         self.dismiss()
 
 
+# NOTE: SelectionDialog seems to be not used anywhere
+# Remove!
+
 class SelectionDialog(EventsDialog):
 
     def add_widget(self, widget, index=0):
@@ -106,8 +109,8 @@ class InfoBubble(Factory.Bubble):
     :attr:`icon` is a  `StringProperty` defaults to `''`
     '''
 
-    fs = BooleanProperty(False)
-    ''' Show Bubble in half screen mode
+    fs = BooleanProperty(False) 
+    ''' Show Bubble in full screen mode
 
     :attr:`fs` is a `BooleanProperty` defaults to `False`
     '''
@@ -137,7 +140,8 @@ class InfoBubble(Factory.Bubble):
         if self.collide_point(*touch.pos):
             return True
 
-    def show(self, pos, duration, width=None, modal=False, exit=False):
+    def show(self, pos, duration, width=None, modal=False, exit=False,
+             on_show_bubble=None):
         '''Animate the bubble into position'''
         self.modal, self.exit = modal, exit
         self.hide(now=True)
@@ -152,13 +156,16 @@ class InfoBubble(Factory.Bubble):
             Window.add_widget(self)
 
         # wait for the bubble to adjust its size according to text then animate
-        Clock.schedule_once(lambda dt: self._show(pos, duration))
+        Clock.schedule_once(
+            lambda dt: self._show(pos, duration, on_show_bubble=on_show_bubble))
 
-    def _show(self, pos, duration):
+    def _show(self, pos, duration, on_show_bubble=None):
 
         def on_stop(*l):
             if duration:
                 Clock.schedule_once(self.hide, duration + .5)
+            if on_show_bubble:
+                Clock.schedule_once(lambda dt: on_show_bubble(), .5)
 
         self.opacity = 0
         arrow_pos = self.arrow_pos

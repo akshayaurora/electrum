@@ -80,6 +80,28 @@
 <BackgroundTopLabel@TopLabel+BackgroundColor>
     background_color: 0, 0, 0, 1
 
+<CheckLabel@ButtonBehavior+BoxLayout>
+    group: None
+    active: False
+    text: 'Blank'
+    spacing: dp(4)
+    on_release:
+        chkbx.trigger_action()
+    CheckBox
+        id: chkbx
+        active: root.active
+        group: root.group
+        size_hint_x: None
+        width: self.height
+        allow_no_selection: False
+        on_active:
+            root.active = args[1]
+    Label
+        id: lbl
+        text_size: self.size
+        halign: 'left'
+        valign: 'center'
+        text: root.text
 
 #########################
 #       Dialogs

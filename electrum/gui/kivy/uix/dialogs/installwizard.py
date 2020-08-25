@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from kivy.app import App
 from kivy.clock import Clock
+from kivy.factory import Factory
 from kivy.lang import Builder
 from kivy.logger import Logger
 from kivy.properties import ObjectProperty, StringProperty, OptionProperty
@@ -31,6 +32,10 @@ from .password_dialog import PasswordDialog
 if TYPE_CHECKING:
     from electrum.gui.kivy.main_window import ElectrumWindow
 
+MSG_HW_STORAGE_ENCRYPTION = _("Set wallet file encryption.") + '\n'\
+                          + _("Your wallet file does not contain secrets, mostly just metadata. ") \
+                          + _("It also contains your master public key that allows watching your addresses.") + '\n\n'\
+                          + _("Note: If you enable this setting, you will need your hardware device to open your wallet.")
 
 # global Variables
 
@@ -814,9 +819,9 @@ class CLButton(ToggleButton):
         self.root.set_text(self.value)
 
 
-# Warning: changed ChoiceLineDialog to inherit from
-# WizardDialog instead from WizardChoiceDialog as 
-# choices layout seemed to be replicated.(too much space was left above as a result)
+# NOTE: WARNING: changed ChoiceLineDialog to inherit from
+# WizardDialog instead from WizardChoiceDialog as
+# choices layout seemed to be replicated.(too much space was left above)
 # Still keeping this warning till we are sure this does not lead to any issues
 # remove if no issues found.
 
@@ -1120,7 +1125,8 @@ class InstallWizard(BaseWizard, Widget):
                 if go_back: Clock.schedule_once(lambda dt: go_back(), delay)
                 return
             # on wizard completion hide message
-            Clock.schedule_once(lambda dt: app.info_bubble.hide(now=True), -1)
+            Clock.schedule_once(
+                lambda dt: app.info_bubble.hide(now=True), -1)
             if on_finished:
                 def protected_on_finished():
                     try:
@@ -1202,7 +1208,16 @@ class InstallWizard(BaseWizard, Widget):
         except BaseException as e:
             self.logger.exception('')
             self.show_error(e)
-            raise ChooseHwDeviceAgain()
+            raise wizard.choose_hw_device()
+
+    def request_storage_encryption(self, run_next):
+
+        dialog = WizardChoiceDialog(self,
+            message=MSG_HW_STORAGE_ENCRYPTION,
+            choices=[(True, 'Encrypted Wallet'), (False, 'Un-Encrypted Wallet')],
+            run_next=run_next)
+
+        dialog.open()
 
     def terminate(self, *, storage=None, db=None, aborted=False):
         if storage is None and not aborted:

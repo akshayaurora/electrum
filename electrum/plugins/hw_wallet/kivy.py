@@ -35,12 +35,16 @@ app = App.get_running_app()
 #from electrum.gui.kivy.password_dialog import PasswordLayout, PW_PASSPHRASE
 from electrum.gui.kivy.main_window import ElectrumWindow
 from electrum.gui.kivy.uix.dialogs.installwizard import InstallWizard
+from electrum.gui.kivy.uix.dialogs.question import Question
+from electrum.gui.kivy.util import TaskThread
 
 from electrum.i18n import _
 from electrum.logging import Logger
 from electrum.util import parse_URI, InvalidBitcoinURI, UserCancelled, UserFacingException
 from electrum.plugin import hook, DeviceUnpairableError
 
+from kivy.clock import Clock
+from kivy.logger import Logger as KivyLogger
 
 from .plugin import OutdatedHwFirmwareException, HW_PluginBase, HardwareHandlerBase
 
@@ -57,32 +61,30 @@ class KivyHandlerBase(HardwareHandlerBase, Logger):
     def __init__(self,  win: Union[ElectrumWindow, InstallWizard], device: str):
         Logger.__init__(self)
         assert win.gui_thread == threading.current_thread(), 'must be called from GUI thread'
-        #self.error_signal.connect(self.error_dialog)
         #self.passphrase_signal.connect(self.passphrase_dialog)
         #self.word_signal.connect(self.word_dialog)
-        #self.query_signal.connect(self.win_query_choice)
-        #self.yes_no_signal.connect(self.win_yes_no_question)
         self.win = win
         self.device = device
         self.dialog = None
         self.done = threading.Event()
 
     def update_status(self, paired):
-        #TODO Implement equal icon on mobile
+        #TODO Implement paired icon on mobile
         if hasattr(self, 'button'):
             button = self.button
             icon_name = button.icon_paired if paired else button.icon_unpaired
             button.setIcon(read_QIcon(icon_name))
 
     def query_choice(self, msg, labels):
+        #TODO adapt for kivy
         self.done.clear()
-        self.query_signal.emit(msg, labels)
+        self.win_query_choice(msg, labels)
         self.done.wait()
         return self.choice
 
     def yes_no_question(self, msg):
         self.done.clear()
-        self.yes_no_signal.emit(msg)
+        self.win_yes_no_question(msg)
         self.done.wait()
         return self.ok
 
@@ -99,18 +101,21 @@ class KivyHandlerBase(HardwareHandlerBase, Logger):
         self.clear_dialog()
 
     def get_word(self, msg):
+        #TODO adapt for kivy
         self.done.clear()
         self.word_signal.emit(msg)
         self.done.wait()
         return self.word
 
     def get_passphrase(self, msg, confirm):
+        #TODO adapt for kivy
         self.done.clear()
         self.passphrase_signal.emit(msg, confirm)
         self.done.wait()
         return self.passphrase
 
     def passphrase_dialog(self, msg, confirm):
+        #TODO adapt for kivy
         #If confirm is true, require the user to enter the passphrase twice
         parent = self.top_level_window()
         d = WindowModalDialog(parent, _("Enter Passphrase"))
@@ -135,6 +140,7 @@ class KivyHandlerBase(HardwareHandlerBase, Logger):
         self.done.set()
 
     def word_dialog(self, msg):
+        #TODO adapt for kivy
         dialog = WindowModalDialog(self.top_level_window(), "")
         hbox = QHBoxLayout(dialog)
         hbox.addWidget(QLabel(msg))
@@ -153,9 +159,11 @@ class KivyHandlerBase(HardwareHandlerBase, Logger):
         app.show_info(msg, modal=True)
 
     def error_dialog(self, msg, blocking):
-        app.show_error(msg)
-        if blocking:
-            self.done.set()
+        def set_done():
+            if blocking: self.done.set()
+
+        Clock.schedule_once(lambda dt:
+                                app.show_error(msg, on_show_error=set_done))
 
     def clear_dialog(self):
         if self.dialog:
@@ -163,16 +171,23 @@ class KivyHandlerBase(HardwareHandlerBase, Logger):
             self.dialog = None
 
     def win_query_choice(self, msg, labels):
-        try:
-            self.choice = self.win.query_choice(msg, labels)
-        except UserCancelled:
-            self.choice = None
-        self.done.set()
+        #TODO: Adapt for kivy
+        def on_choice(choice):
+            print(choice, '<<<')
+            self.choice = choice
+            self.done.set()
+
+        ChoiceDialog(msg, labels, action=on_choice)
 
     def win_yes_no_question(self, msg):
-        self.ok = self.win.question(msg)
-        self.done.set()
 
+        def cb(ok):
+            self.ok = ok
+            self.done.set()
+
+        self.dialog = dialog = Question(msg, cb)
+        dialog.auto_dismiss = False
+        Clock.schedule_once(lambda dt: dialog.open())
 
 class KivyPluginBase(object):
 
@@ -180,6 +195,7 @@ class KivyPluginBase(object):
     def load_wallet(self: Union['KivyPluginBase', HW_PluginBase], wallet: 'Abstract_Wallet', window: ElectrumWindow):
         relevant_keystores = [keystore for keystore in wallet.get_keystores()
                               if isinstance(keystore, self.keystore_class)]
+        KivyLogger.debug('Trezor: Load_wallet')
         if not relevant_keystores:
             return
         for keystore in relevant_keystores:
@@ -188,13 +204,14 @@ class KivyPluginBase(object):
                 window.show_error(message)
                 return
             tooltip = self.device + '\n' + (keystore.label or 'unnamed')
-            cb = partial(self._on_status_bar_button_click, window=window, keystore=keystore)
-            button = StatusBarButton(read_QIcon(self.icon_unpaired), tooltip, cb)
-            button.icon_paired = self.icon_paired
-            button.icon_unpaired = self.icon_unpaired
-            window.statusBar().addPermanentWidget(button)
+            #TODO manage icon pairing for hw_wallet for kivy UI
+            #cb = partial(self._on_status_bar_button_click, window=window, keystore=keystore)
+            #button = StatusBarButton(read_QIcon(self.icon_unpaired), tooltip, cb)
+            #button.icon_paired = self.icon_paired
+            #button.icon_unpaired = self.icon_unpaired
+            #window.statusBar().addPermanentWidget(button)
             handler = self.create_handler(window)
-            handler.button = button
+            #handler.button = button
             keystore.handler = handler
             keystore.thread = TaskThread(window, on_error=partial(self.on_task_thread_error, window, keystore))
             self.add_show_address_on_hw_device_button_for_receive_addr(wallet, keystore, window)
@@ -220,11 +237,14 @@ class KivyPluginBase(object):
                                     devices=devices)
                 except UserCancelled:
                     pass
+            if hasattr(window, 'info_bubble') and
+                window.info_bubble: window.info_bubble.hide()
 
         some_keystore = relevant_keystores[0]
         some_keystore.thread.add(trigger_pairings)
 
     def _on_status_bar_button_click(self, *, window: ElectrumWindow, keystore: 'Hardware_KeyStore'):
+        #TODO: adapt for kivy
         try:
             self.show_settings_dialog(window=window, keystore=keystore)
         except (UserFacingException, UserCancelled) as e:
@@ -233,6 +253,7 @@ class KivyPluginBase(object):
 
     def on_task_thread_error(self: Union['KivyPluginBase', HW_PluginBase], window: ElectrumWindow,
                              keystore: 'Hardware_KeyStore', exc_info):
+        #TODO: adapt for kivy
         e = exc_info[1]
         if isinstance(e, OutdatedHwFirmwareException):
             if window.question(e.text_ignore_old_fw_and_continue(), title=_("Outdated device firmware")):
@@ -246,12 +267,13 @@ class KivyPluginBase(object):
                 keystore.thread.add(re_pair_device)
             return
         else:
-            window.on_error(exc_info)
+            window.show_error(exc_info[1])
 
     def choose_device(self: Union['KivyPluginBase', HW_PluginBase], window: ElectrumWindow,
                       keystore: 'Hardware_KeyStore') -> Optional[str]:
         '''This dialog box should be usable even if the user has
         forgotten their PIN or it is in bootloader mode.'''
+        #TODO adapt for kivy
         assert window.gui_thread == threading.current_thread(), 'must not be called from GUI thread'
         device_id = self.device_manager().xpub_id(keystore.xpub)
         if not device_id:
@@ -263,6 +285,7 @@ class KivyPluginBase(object):
         return device_id
 
     def show_settings_dialog(self, window: ElectrumWindow, keystore: 'Hardware_KeyStore') -> None:
+        #TODO adapt for kivy
         # default implementation (if no dialog): just try to connect to device
         def connect():
             device_id = self.choose_device(window, keystore)
@@ -271,14 +294,18 @@ class KivyPluginBase(object):
     def add_show_address_on_hw_device_button_for_receive_addr(self, wallet: 'Abstract_Wallet',
                                                               keystore: 'Hardware_KeyStore',
                                                               main_window: ElectrumWindow):
-        plugin = keystore.plugin
-        receive_address_e = main_window.receive_address_e
+        # TODO for kivy: What does this do ? Can't figure out this in QT UI
+        # Since this is just for display, ignoring this for now.
+        # FIXME for kivy
+        pass
+        #plugin = keystore.plugin
+        #receive_address_e = main_window.receive_address_e
 
-        def show_address():
-            addr = str(receive_address_e.text())
-            keystore.thread.add(partial(plugin.show_address, wallet, addr, keystore))
-        dev_name = f"{plugin.device} ({keystore.label})"
-        receive_address_e.addButton("eye1.png", show_address, _("Show on {}").format(dev_name))
+        #def show_address():
+            #addr = str(receive_address_e.text())
+            #keystore.thread.add(partial(plugin.show_address, wallet, addr, keystore))
+        #dev_name = f"{plugin.device} ({keystore.label})"
+        #receive_address_e.addButton("eye1.png", show_address, _("Show on {}").format(dev_name))
 
     def create_handler(self, window: Union[ElectrumWindow, InstallWizard]) -> 'KivyHandlerBase':
         raise NotImplementedError()

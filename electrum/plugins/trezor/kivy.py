@@ -319,6 +319,11 @@ class Plugin(TrezorPlugin, KivyPlugin):
             raise ScriptTypeNotSupported(_('This type of script is not supported with {}.').format(self.device))
 
         def on_client(client):
+            if client is None:
+                wizard.show_error(
+                    _('Failed to create a client for this device.') + '\n' +
+                    _('Make sure it is in the correct state.'))
+                return wizard.choose_hw_device()
             xpub = client.get_xpub(derivation, xtype)
             client.used()
             run_next(xpub)

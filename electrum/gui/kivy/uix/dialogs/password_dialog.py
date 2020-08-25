@@ -341,7 +341,12 @@ class OpenWalletDialog(PasswordDialog):
             self.message = _('Press Next to create')
         elif self.storage.is_encrypted():
             if not self.storage.is_encrypted_with_user_pw():
-                raise Exception("Kivy GUI does not support this type of encrypted wallet files.")
+                if self.storage.is_encrypted_with_hw_device():
+                    self.require_password = False
+                    self.message = _('Press Next to choose a device to decrypt wallet')
+                    return
+                else:
+                    raise Exception("Kivy GUI does not support this type of encrypted wallet files.")
             self.require_password = True
             self.pw_check = self.storage.check_password
             self.message = self.enter_pw_message

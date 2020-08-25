@@ -366,6 +366,7 @@ class ElectrumWindow(App):
         self.pause_time = 0
         self.asyncio_loop = asyncio.get_event_loop()
         self.password = None
+        self.gui_thread = threading.current_thread()
 
         App.__init__(self)#, **kwargs)
 
@@ -693,6 +694,12 @@ class ElectrumWindow(App):
     def on_stop(self):
         Logger.info('on_stop')
         self.stop_wallet()
+        # Let's call for all threads to stop and exit cleanly
+        for thread in threading.enumerate():
+            try:
+                thread.stop()
+            except AttributeError:
+                pass
 
     def stop_wallet(self):
         if self.wallet:
@@ -798,11 +805,6 @@ class ElectrumWindow(App):
                          module='electrum.gui.kivy.uix.dialogs')
         Factory.register('QRCodeWidget',
                          module='electrum.gui.kivy.uix.qrcodewidget')
-
-        # preload widgets. Remove this if you want to load the widgets on demand
-        #Cache.append('electrum_widgets', 'AnimatedPopup', Factory.AnimatedPopup())
-        #Cache.append('electrum_widgets', 'QRCodeWidget', Factory.QRCodeWidget())
-
         # load and focus the ui
         self.root.manager = self.root.ids['manager']
 
@@ -1014,15 +1016,6 @@ class ElectrumWindow(App):
             return
         self.qr_dialog(label.name, label.data, True)
 
-    def show_error(self, error, width='200dp', pos=None, arrow_pos=None,
-                   exit=False, icon='atlas://electrum/gui/kivy/theming/light/error', duration=0,
-                   modal=False):
-        ''' Show an error Message Bubble.
-        '''
-        self.show_info_bubble( text=error, icon=icon, width=width,
-            pos=pos or Window.center, arrow_pos=arrow_pos, exit=exit,
-            duration=duration, modal=modal)
-
     def show_info(self, error, width='200dp', pos=None, arrow_pos=None,
                   exit=False, duration=0, modal=False):
         ''' Show an Info Message Bubble.
@@ -1031,8 +1024,18 @@ class ElectrumWindow(App):
             duration=duration, modal=modal, exit=exit, pos=pos,
             arrow_pos=arrow_pos)
 
+    def show_error(self, error, width='200dp', pos=None, arrow_pos=None,
+                   exit=False, icon='atlas://electrum/gui/kivy/theming/light/error',
+                   duration=0, modal=False, on_show_error=None):
+        ''' Show an error Message Bubble.
+        '''
+        self.show_info_bubble( text=error, icon=icon, width=width,
+            pos=pos or Window.center, arrow_pos=arrow_pos, exit=exit,
+            duration=duration, modal=modal, on_show_bubble=on_show_error)
+
     def show_info_bubble(self, text=_('Hello World'), pos=None, duration=0,
-                         arrow_pos='bottom_mid', width=None, icon='', modal=False, exit=False):
+                         arrow_pos='bottom_mid', width=None, icon='',
+                         modal=False, exit=False, on_show_bubble=None):
         '''Method to show an Information Bubble
 
         .. parameters::
@@ -1041,6 +1044,7 @@ class ElectrumWindow(App):
             duration: duration the bubble remains on screen. 0 = click to hide
             width: width of the Bubble
             arrow_pos: arrow position for the bubble
+            on_show_error: function to be run after showing the error.
         '''
         Logger.debug('Electrum: show info bubble: {}'.format(text))
         text = str(text)  # so that we also handle e.g. Exception
@@ -1082,7 +1086,8 @@ class ElectrumWindow(App):
         info_bubble.message = text
         if not pos:
             pos = (win.center[0], win.center[1] - (info_bubble.height/2))
-        info_bubble.show(pos, duration, width, modal=modal, exit=exit)
+        info_bubble.show(pos, duration, width, modal=modal, exit=exit,
+                         on_show_bubble=on_show_bubble)
 
     def tx_dialog(self, tx):
         from .uix.dialogs.tx_dialog import TxDialog
