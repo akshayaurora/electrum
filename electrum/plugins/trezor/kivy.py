@@ -235,16 +235,16 @@ class Plugin(TrezorPlugin, KivyPlugin):
                 task=lambda: 
                     client.get_xpub('m', 'standard', creating=is_creating_wallet),
                 on_finished=partial(_next, client, purpose),
-                go_back=partial(wizard.choose_hw_device))
+                go_back=partial(wizard.choose_hw_device, purpose=purpose))
 
         if not device_info.initialized:
-            self.initialize_device(device_id, wizard, client.handler,
+            self.initialize_device(device_id, wizard, client.handler, purpose,
                                    run_next=run_get_xpub)
             return
         run_get_xpub()
 
 
-    def initialize_device(self, device_id, wizard, handler, run_next=None):
+    def initialize_device(self, device_id, wizard, handler, purpose, run_next=None):
         # Initialization method
         msg = _("Choose how you want to initialize your {}.").format(self.device, self.device)
         choices = [
@@ -254,7 +254,7 @@ class Plugin(TrezorPlugin, KivyPlugin):
         def f(method, settings):
             wizard.run_task_without_blocking_gui(partial(
                 self._initialize_device_safe, settings,
-                method, device_id, wizard, handler, run_next=run_next))
+                method, device_id, wizard, handler, purpose, run_next=run_next))
 
         wizard.choice_dialog(
             title=_('Initialize Device'), message=msg, choices=choices,
@@ -262,7 +262,7 @@ class Plugin(TrezorPlugin, KivyPlugin):
                 self.request_trezor_init_settings(
                     wizard, method, device_id, run_next=partial(f, method)))
 
-    def _initialize_device_safe(self, settings, method, device_id, wizard, handler, run_next=None):
+    def _initialize_device_safe(self, settings, method, device_id, wizard, handler, purpose, run_next=None):
         exit_code = delay = 0
         try:
             self._initialize_device(settings, method, device_id, wizard, handler)
@@ -274,7 +274,7 @@ class Plugin(TrezorPlugin, KivyPlugin):
             exit_code = delay = 1
         finally:
             if exit_code == 1:
-                Clock.schedule_once(lambda dt: wizard.choose_hw_device(), delay)
+                Clock.schedule_once(lambda dt: wizard.choose_hw_device(purpose=purpose), delay)
                 return
             # run get_xpub
             Clock.schedule_once(lambda dt: run_next())
@@ -294,22 +294,22 @@ class Plugin(TrezorPlugin, KivyPlugin):
                     + _('To try to fix this, we will now re-pair with your device.') + '\n'
                     + _('Please try again.'))
                 devmgr.unpair_id(device_info.device.id_)
-                wizard.choose_hw_device()
+                wizard.choose_hw_device(purpose=purpose)
             except OutdatedHwFirmwareException as e:
                 if wizard.question(e.text_ignore_old_fw_and_continue(), title=_("Outdated device firmware")):
                     wizard.plugin.set_ignore_outdated_fw()
                     # will need to re-pair
                     devmgr.unpair_id(device_info.device.id_)
-                wizard.choose_hw_device()
+                wizard.choose_hw_device(purpose=purpose)
             except (UserCancelled, GoBack):
-                wizard.choose_hw_device()
+                wizard.choose_hw_device(purpose=purpose)
             except UserFacingException as e:
                 wizard.show_error(str(e))
-                wizard.choose_hw_device()
+                wizard.choose_hw_device(purpose=purpose)
             except BaseException as e:
                 wizard.logger.exception('')
                 wizard.show_error(str(e))
-                wizard.choose_hw_device()
+                wizard.choose_hw_device(purpose=purpose)
 
         self.scan_and_create_client_for_device(
             device_id=device_id, wizard=wizard, run_next=on_client)

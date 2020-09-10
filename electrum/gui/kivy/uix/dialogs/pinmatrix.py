@@ -100,4 +100,5 @@ class PinMatrixDialog(WizardDialog):
         return True
 
     def go_back(self):
+        # returning None causes the plugin to cancel pin matrix.
         self.run_next(None)

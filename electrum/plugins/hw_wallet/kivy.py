@@ -173,7 +173,6 @@ class KivyHandlerBase(HardwareHandlerBase, Logger):
     def win_query_choice(self, msg, labels):
         #TODO: Adapt for kivy
         def on_choice(choice):
-            print(choice, '<<<')
             self.choice = choice
             self.done.set()
 
@@ -237,8 +236,8 @@ class KivyPluginBase(object):
                                     devices=devices)
                 except UserCancelled:
                     pass
-            if hasattr(window, 'info_bubble') and
-                window.info_bubble: window.info_bubble.hide()
+            if (hasattr(window, 'info_bubble') and
+                window.info_bubble): window.info_bubble.hide()
 
         some_keystore = relevant_keystores[0]
         some_keystore.thread.add(trigger_pairings)

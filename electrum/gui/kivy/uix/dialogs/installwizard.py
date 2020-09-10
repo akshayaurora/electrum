@@ -19,9 +19,10 @@ from kivy.clock import Clock
 from kivy.utils import platform
 
 from electrum.base_wizard import (
-    HW_PluginBase, HWD_SETUP_NEW_WALLET, ChooseHwDeviceAgain, BaseWizard)
+    HW_PluginBase, HWD_SETUP_NEW_WALLET, HWD_SETUP_DECRYPT_WALLET, 
+    ChooseHwDeviceAgain, BaseWizard)
 from electrum.bip32 import normalize_bip32_derivation
-from electrum.util import is_valid_email
+from electrum.util import is_valid_email, InvalidPassword
 
 from electrum.storage import WalletStorage, StorageEncryptionVersion
 
@@ -1130,6 +1131,7 @@ class InstallWizard(BaseWizard, Widget):
             if on_finished:
                 def protected_on_finished():
                     try:
+                        Logger.debug('running on_finished {}'.format(on_finished))
                         on_finished()
                     except Exception as e:
                         self.show_error(str(e))
@@ -1146,6 +1148,14 @@ class InstallWizard(BaseWizard, Widget):
     def choose_hw_device(self,
                          purpose=HWD_SETUP_NEW_WALLET,
                          storage: WalletStorage = None):
+        # this is necessary for when choose_hardware is called again after 
+        # a wrong entry and storage is still needed from before
+        if purpose == HWD_SETUP_DECRYPT_WALLET:
+            if storage:
+                self._last_storage = storage
+            elif storage == None:
+                storage = self._last_storage
+
         try:
             self._choose_hw_device(purpose=purpose, storage=storage)
         except ChooseHwDeviceAgain:
@@ -1157,9 +1167,10 @@ class InstallWizard(BaseWizard, Widget):
         assert isinstance(self.plugin, HW_PluginBase)
         devmgr = self.plugins.device_manager
         self.plugin.setup_device(device_info, self, purpose,
-                                 run_next=partial(self.on_hw_client, name, device_info))
+                                 run_next=partial(self.on_hw_client, name,
+                                                  device_info, storage))
 
-    def on_hw_client(self, name, device_info, client, purpose):
+    def on_hw_client(self, name, device_info, storage, client, purpose):
         if purpose == HWD_SETUP_NEW_WALLET:
             def f(derivation, script_type):
                 derivation = normalize_bip32_derivation(derivation)
@@ -1174,6 +1185,7 @@ class InstallWizard(BaseWizard, Widget):
                 if hasattr(client, 'clear_session'):  # FIXME not all hw wallet plugins have this
                     client.clear_session()
                 raise
+            App.get_running_app()._on_decrypted_storage(storage)
         else:
             raise Exception('unknown purpose: %s' % purpose)
 
@@ -1208,7 +1220,7 @@ class InstallWizard(BaseWizard, Widget):
         except BaseException as e:
             self.logger.exception('')
             self.show_error(e)
-            raise wizard.choose_hw_device()
+            raise wizard.choose_hw_device(purpose=purpose, storage=storage)
 
     def request_storage_encryption(self, run_next):
 

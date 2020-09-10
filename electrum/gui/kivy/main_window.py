@@ -9,6 +9,7 @@ import threading
 import asyncio
 from typing import TYPE_CHECKING, Optional, Union, Callable, Sequence
 
+from electrum.base_wizard import BaseWizard, HWD_SETUP_DECRYPT_WALLET
 from electrum.storage import WalletStorage, StorageReadWriteError
 from electrum.wallet_db import WalletDB
 from electrum.wallet import Wallet, InternalAddressCorruption, Abstract_Wallet
@@ -21,6 +22,7 @@ from electrum.invoices import PR_PAID, PR_FAILED
 from electrum import blockchain
 from electrum.network import Network, TxBroadcastError, BestEffortRequestFailed
 from electrum.interface import PREFERRED_NETWORK_PROTOCOL, ServerAddr
+
 from .i18n import _
 
 from kivy.app import App
@@ -684,6 +686,14 @@ class ElectrumWindow(App):
             wizard.run('new')
         else:
             try:
+                if storage.is_encrypted_with_hw_device():
+                    # call choose_hw_device
+                    wizard = Factory.InstallWizard(self.electrum_config, self.plugins)
+                    wizard.path = storage.path
+                    wizard.bind(on_wizard_complete=self.on_wizard_complete)
+                    wizard.run('choose_hw_device', purpose=HWD_SETUP_DECRYPT_WALLET, storage=storage)
+                    # with device call get pin dialog with 
+                    return
                 storage.decrypt(pw)
             except StorageReadWriteError:
                 app.show_error(_("R/W error accessing path"))

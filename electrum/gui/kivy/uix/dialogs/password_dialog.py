@@ -343,7 +343,9 @@ class OpenWalletDialog(PasswordDialog):
             if not self.storage.is_encrypted_with_user_pw():
                 if self.storage.is_encrypted_with_hw_device():
                     self.require_password = False
-                    self.message = _('Press Next to choose a device to decrypt wallet')
+                    self.message = _(
+                        'This file is encrypted using a HW Device\n\n'
+                        'Press Next to choose a device to decrypt wallet')
                     return
                 else:
                     raise Exception("Kivy GUI does not support this type of encrypted wallet files.")
